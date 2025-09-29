@@ -1,6 +1,12 @@
 # SizeKit - Phase 1: Back Camera Access
 
-A simple web application that reliably opens the **back camera** on mobile devices. This is the foundation for the nail scanning feature.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
+![Phase](https://img.shields.io/badge/phase-1%20%7C%20Camera%20Access-purple.svg)
+
+A simple web application that reliably opens the **back camera** on mobile devices. This is the foundation for the nail scanning feature in the 4TRACK application.
+
+**🔗 Repository:** https://github.com/cosmicguruman/sizekit
 
 ## 🎯 What This Does
 

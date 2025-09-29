@@ -1,3 +1,11 @@
+/**
+ * SizeKit - Phase 1: Camera Access
+ * Mobile-first responsive styles with iOS Safari optimizations
+ * 
+ * @version 1.0.0
+ * @license MIT
+ */
+
 /* ============================================
    RESET & BASE STYLES
    ============================================ */
@@ -88,6 +96,7 @@ button {
     min-width: 200px;
     min-height: 56px; /* Thumb-friendly tap target */
     -webkit-tap-highlight-color: transparent;
+    will-change: transform; /* Performance optimization for animations */
 }
 
 .primary-btn {
@@ -174,6 +183,7 @@ button {
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
+    will-change: transform; /* Performance optimization for rotation */
 }
 
 @keyframes spin {

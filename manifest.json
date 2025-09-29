@@ -1,0 +1,18 @@
+{
+  "name": "SizeKit - Camera Test",
+  "short_name": "SizeKit",
+  "description": "Mobile camera access for nail scanning",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#667eea",
+  "theme_color": "#667eea",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
