@@ -1,0 +1,274 @@
+/* ============================================
+   RESET & BASE STYLES
+   ============================================ */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+/* ============================================
+   SCREEN MANAGEMENT
+   ============================================ */
+.screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.screen.active {
+    display: flex;
+}
+
+/* ============================================
+   LANDING SCREEN
+   ============================================ */
+#landing-screen {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.container {
+    text-align: center;
+    padding: 2rem;
+    max-width: 500px;
+}
+
+h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+}
+
+.subtitle {
+    font-size: 1rem;
+    opacity: 0.9;
+    margin-bottom: 2rem;
+    font-weight: 500;
+}
+
+.instruction {
+    font-size: 0.95rem;
+    opacity: 0.85;
+    margin-bottom: 3rem;
+    line-height: 1.5;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+button {
+    font-family: inherit;
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 1rem 2.5rem;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 200px;
+    min-height: 56px; /* Thumb-friendly tap target */
+    -webkit-tap-highlight-color: transparent;
+}
+
+.primary-btn {
+    background: #ffffff;
+    color: #667eea;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.primary-btn:active {
+    transform: scale(0.98);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.secondary-btn {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    margin-top: 1rem;
+}
+
+.secondary-btn:active {
+    transform: scale(0.98);
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================
+   CAMERA SCREEN
+   ============================================ */
+#camera-screen {
+    background: #000000;
+}
+
+#camera-preview {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Fill screen while maintaining aspect ratio */
+    transform: scaleX(1); /* No mirror effect for back camera */
+}
+
+.camera-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 2rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0) 100%);
+    display: flex;
+    justify-content: center;
+    z-index: 10;
+}
+
+#close-camera-btn {
+    background: rgba(255, 255, 255, 0.9);
+    color: #1a1a1a;
+}
+
+/* ============================================
+   LOADING INDICATOR
+   ============================================ */
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 5;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 2rem;
+    border-radius: 16px;
+}
+
+.loading.hidden {
+    display: none;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading p {
+    font-size: 0.95rem;
+    opacity: 0.9;
+}
+
+/* ============================================
+   ERROR SCREEN
+   ============================================ */
+#error-screen {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+}
+
+.error-text {
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+    opacity: 0.95;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    border-left: 4px solid rgba(255, 255, 255, 0.5);
+}
+
+/* ============================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================ */
+@media (max-height: 600px) {
+    h1 {
+        font-size: 2rem;
+    }
+    
+    .instruction {
+        margin-bottom: 2rem;
+    }
+    
+    button {
+        padding: 0.875rem 2rem;
+        min-height: 50px;
+    }
+}
+
+/* High contrast for outdoor visibility */
+@media (prefers-contrast: high) {
+    .primary-btn {
+        border: 3px solid #667eea;
+    }
+}
+
+/* Landscape orientation adjustments */
+@media (orientation: landscape) and (max-height: 500px) {
+    .container {
+        padding: 1rem;
+    }
+    
+    h1 {
+        font-size: 1.8rem;
+    }
+    
+    .instruction {
+        margin-bottom: 1.5rem;
+    }
+}
+
+/* Prevent pull-to-refresh and overscroll */
+body {
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure video doesn't have any margins */
+video {
+    display: block;
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+    /* iOS Safari */
+    body {
+        height: -webkit-fill-available;
+    }
+    
+    .screen {
+        height: -webkit-fill-available;
+    }
+}
