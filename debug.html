@@ -157,10 +157,9 @@
         });
 
         let stream = null;
-        let handposeModel = null;
         let lastReference = null;
         
-        console.log('🟢 Variables initialized');
+        console.log('🟢 Variables initialized (handposeModel is in detection.js)');
 
         // Resize canvas to match video
         function resizeCanvas() {
@@ -215,7 +214,7 @@
                     // Update loading message
                     loadingText.textContent = '🤖 Loading AI model...';
                     console.log('🤖 Loading handpose model...');
-                    handposeModel = await SizeKitDetection.loadHandposeModel();
+                    await SizeKitDetection.loadHandposeModel();
                     console.log('✅ Model loaded, starting continuous detection...');
                     
                     // Hide loading overlay
