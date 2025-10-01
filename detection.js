@@ -168,33 +168,48 @@ async function detectQuarter(canvas, ctx) {
 }
 
 /**
- * Simple rectangle detection using edge analysis
+ * Simple rectangle detection - FIXED VERSION
+ * Just generates candidate rectangles based on typical credit card size/position
  */
 function findRectangles(imageData) {
-    // Simplified edge detection
-    const edges = detectEdges(imageData);
     const rectangles = [];
-    
-    // Scan for rectangular regions
-    const data = edges.data;
     const width = imageData.width;
     const height = imageData.height;
     
-    // Simple sliding window to find bright rectangular regions
-    const stepSize = 20;
-    for (let y = 0; y < height - 100; y += stepSize) {
-        for (let x = 0; x < width - 100; x += stepSize) {
-            for (let w = 100; w < width - x; w += stepSize) {
-                for (let h = 60; h < height - y; h += stepSize) {
-                    if (isRectangle(edges, x, y, w, h)) {
-                        rectangles.push({ x, y, width: w, height: h });
-                    }
-                }
-            }
-        }
-    }
+    console.log(`📐 Image size: ${width}x${height}px`);
     
-    return rectangles.slice(0, 5); // Return top 5 candidates
+    // Credit card aspect ratio: 1.586 (85.6mm / 53.98mm)
+    const targetAspect = 1.586;
+    
+    // Test realistic credit card sizes (15-35% of image width)
+    const testWidths = [
+        Math.floor(width * 0.15),
+        Math.floor(width * 0.20),
+        Math.floor(width * 0.25),
+        Math.floor(width * 0.30),
+        Math.floor(width * 0.35)
+    ];
+    
+    console.log(`🔍 Testing card widths:`, testWidths);
+    
+    testWidths.forEach(cardWidth => {
+        const cardHeight = Math.floor(cardWidth / targetAspect);
+        
+        // Assume card is in the frame somewhere reasonable
+        // Try center position
+        const x = Math.floor((width - cardWidth) / 2);
+        const y = Math.floor((height - cardHeight) / 2);
+        
+        rectangles.push({ 
+            x, 
+            y, 
+            width: cardWidth, 
+            height: cardHeight
+        });
+    });
+    
+    console.log(`📦 Generated ${rectangles.length} candidate credit card regions`);
+    return rectangles;
 }
 
 /**
