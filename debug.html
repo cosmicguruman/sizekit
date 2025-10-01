@@ -153,32 +153,63 @@
 
         // Start camera
         startBtn.addEventListener('click', async () => {
+            console.log('🔵 Start button clicked');
+            startBtn.textContent = 'Starting...';
+            startBtn.disabled = true;
+            
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { exact: "environment" },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    },
-                    audio: false
-                });
+                console.log('📷 Requesting camera access...');
+                
+                // Try exact environment first
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: { exact: "environment" },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                    console.log('✅ Camera started with exact environment');
+                } catch (e) {
+                    console.log('⚠️ Exact environment failed, trying fallback...');
+                    // Fallback without exact
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: "environment",
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                    console.log('✅ Camera started with fallback');
+                }
                 
                 video.srcObject = stream;
+                console.log('📹 Stream attached to video element');
                 
                 video.addEventListener('loadedmetadata', async () => {
+                    console.log('📹 Video metadata loaded');
                     resizeCanvas();
+                    console.log('🎨 Canvas resized to', overlay.width, 'x', overlay.height);
                     startOverlay.classList.add('hidden');
+                    console.log('✅ Start overlay hidden');
                     
                     // Load AI model
                     measurements.innerHTML = '<div class="status">🤖 Loading AI model...</div>';
+                    console.log('🤖 Loading handpose model...');
                     handposeModel = await SizeKitDetection.loadHandposeModel();
+                    console.log('✅ Model loaded, starting continuous detection...');
                     
                     // Start continuous detection
                     detectContinuously();
                 });
                 
             } catch (error) {
-                alert('Camera error: ' + error.message);
+                console.error('❌ Camera error:', error);
+                startBtn.textContent = 'Camera Failed';
+                startBtn.disabled = false;
+                alert('Camera error: ' + error.message + '\n\nMake sure:\n1. You granted camera permission\n2. You are on HTTPS\n3. Your browser supports camera access');
             }
         });
 
