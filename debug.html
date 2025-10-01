@@ -76,7 +76,7 @@
             color: #4caf50;
         }
 
-        #start-overlay {
+        #loading-overlay {
             position: absolute;
             top: 0;
             left: 0;
@@ -86,27 +86,32 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            flex-direction: column;
+            gap: 20px;
         }
 
-        #start-overlay.hidden {
+        #loading-overlay.hidden {
             display: none;
         }
 
-        #start-btn {
-            padding: 20px 40px;
+        .loading-text {
             font-size: 24px;
             font-weight: bold;
-            border: none;
-            border-radius: 15px;
-            background: #667eea;
             color: white;
-            cursor: pointer;
-            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.5);
+            text-align: center;
         }
 
-        #start-btn:active {
-            transform: scale(0.98);
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(102, 126, 234, 0.3);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         .status {
@@ -127,8 +132,9 @@
         <video id="video" autoplay playsinline></video>
         <canvas id="overlay"></canvas>
         <div id="measurements"></div>
-        <div id="start-overlay">
-            <button id="start-btn">📸 Start Camera</button>
+        <div id="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loading-text">📸 Starting Camera...</div>
         </div>
     </div>
 
@@ -138,8 +144,8 @@
         const overlay = document.getElementById('overlay');
         const ctx = overlay.getContext('2d');
         const measurements = document.getElementById('measurements');
-        const startBtn = document.getElementById('start-btn');
-        const startOverlay = document.getElementById('start-overlay');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
 
         let stream = null;
         let handposeModel = null;
@@ -151,11 +157,9 @@
             overlay.height = video.videoHeight;
         }
 
-        // Start camera
-        startBtn.addEventListener('click', async () => {
-            console.log('🔵 Start button clicked');
-            startBtn.textContent = 'Starting...';
-            startBtn.disabled = true;
+        // Auto-start camera on page load
+        async function startCamera() {
+            console.log('🔵 Auto-starting camera...');
             
             try {
                 console.log('📷 Requesting camera access...');
@@ -192,14 +196,16 @@
                     console.log('📹 Video metadata loaded');
                     resizeCanvas();
                     console.log('🎨 Canvas resized to', overlay.width, 'x', overlay.height);
-                    startOverlay.classList.add('hidden');
-                    console.log('✅ Start overlay hidden');
                     
-                    // Load AI model
-                    measurements.innerHTML = '<div class="status">🤖 Loading AI model...</div>';
+                    // Update loading message
+                    loadingText.textContent = '🤖 Loading AI model...';
                     console.log('🤖 Loading handpose model...');
                     handposeModel = await SizeKitDetection.loadHandposeModel();
                     console.log('✅ Model loaded, starting continuous detection...');
+                    
+                    // Hide loading overlay
+                    loadingOverlay.classList.add('hidden');
+                    console.log('✅ Loading overlay hidden');
                     
                     // Start continuous detection
                     detectContinuously();
@@ -207,10 +213,15 @@
                 
             } catch (error) {
                 console.error('❌ Camera error:', error);
-                startBtn.textContent = 'Camera Failed';
-                startBtn.disabled = false;
+                loadingText.textContent = '❌ Camera Failed';
                 alert('Camera error: ' + error.message + '\n\nMake sure:\n1. You granted camera permission\n2. You are on HTTPS\n3. Your browser supports camera access');
             }
+        }
+
+        // Start camera automatically when page loads
+        window.addEventListener('load', () => {
+            console.log('🎯 Page loaded, auto-starting camera...');
+            startCamera();
         });
 
         // Continuous detection loop
@@ -339,8 +350,7 @@
             }
         }
 
-        console.log('🎯 SizeKit Real-Time Debug Mode');
-        console.log('📱 Tap "Start Camera" to begin');
+        console.log('🎯 SizeKit Real-Time Debug Mode - Auto-Start');
     </script>
 </body>
 </html>
