@@ -162,6 +162,7 @@
             console.log('🔵 Auto-starting camera...');
             
             try {
+                loadingText.textContent = '📷 Requesting camera access...';
                 console.log('📷 Requesting camera access...');
                 
                 // Try exact environment first
@@ -175,8 +176,10 @@
                         audio: false
                     });
                     console.log('✅ Camera started with exact environment');
+                    loadingText.textContent = '✅ Camera started!';
                 } catch (e) {
-                    console.log('⚠️ Exact environment failed, trying fallback...');
+                    console.log('⚠️ Exact environment failed, trying fallback...', e);
+                    loadingText.textContent = '⚠️ Trying fallback camera...';
                     // Fallback without exact
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: {
@@ -187,6 +190,7 @@
                         audio: false
                     });
                     console.log('✅ Camera started with fallback');
+                    loadingText.textContent = '✅ Camera started!';
                 }
                 
                 video.srcObject = stream;
@@ -213,15 +217,38 @@
                 
             } catch (error) {
                 console.error('❌ Camera error:', error);
-                loadingText.textContent = '❌ Camera Failed';
-                alert('Camera error: ' + error.message + '\n\nMake sure:\n1. You granted camera permission\n2. You are on HTTPS\n3. Your browser supports camera access');
+                loadingText.innerHTML = `
+                    ❌ Camera Failed<br>
+                    <small style="font-size: 16px; font-weight: normal;">
+                    ${error.name}: ${error.message}<br><br>
+                    Check:<br>
+                    • Camera permission allowed?<br>
+                    • On HTTPS?<br>
+                    • Camera not in use by another app?
+                    </small>
+                `;
             }
+        }
+
+        // Check if detection.js loaded
+        if (typeof SizeKitDetection === 'undefined') {
+            console.error('❌ SizeKitDetection not loaded - detection.js failed to load');
+            loadingText.innerHTML = `
+                ❌ Failed to load detection.js<br>
+                <small style="font-size: 16px; font-weight: normal;">
+                Refresh the page or check console for errors
+                </small>
+            `;
         }
 
         // Start camera automatically when page loads
         window.addEventListener('load', () => {
             console.log('🎯 Page loaded, auto-starting camera...');
-            startCamera();
+            if (typeof SizeKitDetection !== 'undefined') {
+                startCamera();
+            } else {
+                loadingText.textContent = '❌ Script loading failed - check console';
+            }
         });
 
         // Continuous detection loop
