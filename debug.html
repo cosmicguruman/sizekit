@@ -140,6 +140,8 @@
 
     <script src="detection.js"></script>
     <script>
+        console.log('🟢 Script tag executing...');
+        
         const video = document.getElementById('video');
         const overlay = document.getElementById('overlay');
         const ctx = overlay.getContext('2d');
@@ -147,9 +149,18 @@
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
 
+        console.log('🟢 Elements loaded:', {
+            video: !!video,
+            overlay: !!overlay,
+            measurements: !!measurements,
+            loadingText: !!loadingText
+        });
+
         let stream = null;
         let handposeModel = null;
         let lastReference = null;
+        
+        console.log('🟢 Variables initialized');
 
         // Resize canvas to match video
         function resizeCanvas() {
@@ -231,6 +242,7 @@
         }
 
         // Check if detection.js loaded
+        console.log('🟢 Checking for SizeKitDetection...', typeof SizeKitDetection);
         if (typeof SizeKitDetection === 'undefined') {
             console.error('❌ SizeKitDetection not loaded - detection.js failed to load');
             loadingText.innerHTML = `
@@ -239,16 +251,29 @@
                 Refresh the page or check console for errors
                 </small>
             `;
+        } else {
+            console.log('✅ SizeKitDetection loaded successfully');
         }
 
-        // Start camera automatically when page loads
-        window.addEventListener('load', () => {
-            console.log('🎯 Page loaded, auto-starting camera...');
-            if (typeof SizeKitDetection !== 'undefined') {
+        // Try multiple approaches to start camera
+        console.log('🟢 Setting up camera start listeners...');
+        
+        // Approach 1: DOMContentLoaded (fires earlier than 'load')
+        if (document.readyState === 'loading') {
+            console.log('🟡 Document still loading, waiting for DOMContentLoaded...');
+            document.addEventListener('DOMContentLoaded', () => {
+                console.log('🎯 DOMContentLoaded fired, starting camera...');
                 startCamera();
-            } else {
-                loadingText.textContent = '❌ Script loading failed - check console';
-            }
+            });
+        } else {
+            // Document already loaded, start immediately
+            console.log('🎯 Document already loaded, starting camera immediately...');
+            startCamera();
+        }
+        
+        // Approach 2: Also listen for 'load' as backup
+        window.addEventListener('load', () => {
+            console.log('🎯 Window load event fired (backup trigger)');
         });
 
         // Continuous detection loop
