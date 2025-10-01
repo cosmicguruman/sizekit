@@ -12,6 +12,11 @@
     <link rel="icon" type="image/svg+xml" href="icon.svg">
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="manifest" href="manifest.json">
+    
+    <!-- TensorFlow.js and MediaPipe for AI detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7"></script>
 </head>
 <body>
     <!-- Landing Screen -->
@@ -141,6 +146,7 @@
     </div>
 
     <script src="camera.js"></script>
+    <script src="detection.js"></script>
     <script src="measurement.js"></script>
 </body>
 </html>

@@ -17,6 +17,12 @@ let measurementState = {
     }
 };
 
+// Store reference and hand data for both hands
+let leftHandReferenceData = null;
+let rightHandReferenceData = null;
+let leftHandData = null;
+let rightHandData = null;
+
 // ============================================
 // DOM ELEMENTS
 // ============================================
@@ -210,33 +216,50 @@ async function processMeasurements() {
     showScreen(screens.processing);
     
     try {
-        // Step 1: Detect reference object
+        // Step 1: Detect reference objects in both photos
         updateProcessingStep('reference', 'active');
-        elements.processingStatus.textContent = 'Detecting reference object...';
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        elements.processingStatus.textContent = 'Detecting reference objects...';
         
-        // TODO: Actual reference detection
-        const referenceDetected = await detectReferenceObject(measurementState.leftHandPhoto);
+        // Detect reference in left hand photo
+        leftHandReferenceData = await SizeKitDetection.detectReferenceObject(measurementState.leftHandPhoto);
+        console.log('✓ Left hand reference detected:', leftHandReferenceData);
+        
+        // Detect reference in right hand photo
+        rightHandReferenceData = await SizeKitDetection.detectReferenceObject(measurementState.rightHandPhoto);
+        console.log('✓ Right hand reference detected:', rightHandReferenceData);
         
         updateProcessingStep('reference', 'complete');
         
-        // Step 2: Detect hand
+        // Step 2: Detect hands and nails
         updateProcessingStep('hand', 'active');
         elements.processingStatus.textContent = 'Detecting hands and nails...';
-        await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // TODO: Actual hand detection
-        const handsDetected = await detectHands();
+        // Detect left hand
+        leftHandData = await SizeKitDetection.detectHandAndNails(measurementState.leftHandPhoto, leftHandReferenceData);
+        console.log('✓ Left hand detected:', leftHandData);
+        
+        // Detect right hand
+        rightHandData = await SizeKitDetection.detectHandAndNails(measurementState.rightHandPhoto, rightHandReferenceData);
+        console.log('✓ Right hand detected:', rightHandData);
         
         updateProcessingStep('hand', 'complete');
         
         // Step 3: Measure nails
         updateProcessingStep('nails', 'active');
         elements.processingStatus.textContent = 'Measuring nail sizes...';
-        await new Promise(resolve => setTimeout(resolve, 1500));
         
-        // TODO: Actual measurement
-        const measurements = await measureNails();
+        // Measure left hand
+        const leftMeasurements = SizeKitDetection.measureNails(leftHandData, leftHandReferenceData);
+        console.log('✓ Left hand measurements:', leftMeasurements);
+        
+        // Measure right hand
+        const rightMeasurements = SizeKitDetection.measureNails(rightHandData, rightHandReferenceData);
+        console.log('✓ Right hand measurements:', rightMeasurements);
+        
+        const measurements = {
+            left: leftMeasurements,
+            right: rightMeasurements
+        };
         
         updateProcessingStep('nails', 'complete');
         
@@ -246,7 +269,7 @@ async function processMeasurements() {
         
     } catch (error) {
         console.error('Processing error:', error);
-        showError('Failed to process measurements. Please ensure your hand and reference object are clearly visible and try again.');
+        showError(error.message || 'Failed to process measurements. Please ensure your hand and reference object are clearly visible and try again.');
     }
 }
 
@@ -259,63 +282,6 @@ function updateProcessingStep(step, status) {
     } else if (status === 'complete') {
         stepElement.classList.add('complete');
     }
-}
-
-// ============================================
-// AI DETECTION FUNCTIONS (Placeholders)
-// ============================================
-async function detectReferenceObject(photo) {
-    // TODO: Implement reference object detection
-    // - Detect credit card (85.6mm x 53.98mm)
-    // - Detect quarter (24.26mm diameter)
-    // - Calculate pixel-to-mm ratio
-    
-    console.log('TODO: Detect reference object');
-    return {
-        type: 'credit_card', // or 'quarter'
-        pixelsPerMm: 5.0, // placeholder
-        confidence: 0.95
-    };
-}
-
-async function detectHands() {
-    // TODO: Implement hand detection
-    // - Use MediaPipe Hands or TensorFlow.js
-    // - Detect all 5 fingers per hand
-    // - Identify nail locations
-    
-    console.log('TODO: Detect hands');
-    return {
-        left: { detected: true, nails: 5 },
-        right: { detected: true, nails: 5 }
-    };
-}
-
-async function measureNails() {
-    // TODO: Implement nail measurement
-    // - Measure nail width at widest point
-    // - Convert pixels to mm using reference scale
-    // - Convert mm to size numbers (0-9)
-    
-    console.log('TODO: Measure nails');
-    
-    // Placeholder data for testing UI
-    return {
-        left: [
-            { finger: 'Thumb', mm: 15.5, size: 1 },
-            { finger: 'Index', mm: 11.2, size: 5 },
-            { finger: 'Middle', mm: 12.1, size: 4 },
-            { finger: 'Ring', mm: 10.3, size: 6 },
-            { finger: 'Pinky', mm: 8.1, size: 9 }
-        ],
-        right: [
-            { finger: 'Thumb', mm: 15.3, size: 1 },
-            { finger: 'Index', mm: 11.4, size: 5 },
-            { finger: 'Middle', mm: 12.0, size: 4 },
-            { finger: 'Ring', mm: 10.5, size: 6 },
-            { finger: 'Pinky', mm: 8.3, size: 9 }
-        ]
-    };
 }
 
 // ============================================
@@ -433,6 +399,12 @@ function resetMeasurement() {
         }
     };
     
+    // Reset detection data
+    leftHandReferenceData = null;
+    rightHandReferenceData = null;
+    leftHandData = null;
+    rightHandData = null;
+    
     updateCaptureInstructions();
     stopCamera();
     showScreen(screens.landing);
@@ -452,6 +424,20 @@ elements.backToHomeBtn.addEventListener('click', () => {
 
 elements.beginBtn.addEventListener('click', async () => {
     console.log('Beginning photo capture');
+    
+    // Preload AI models
+    try {
+        elements.beginBtn.disabled = true;
+        elements.beginBtn.textContent = 'Loading AI...';
+        await SizeKitDetection.loadHandposeModel();
+        console.log('✓ AI models loaded');
+    } catch (error) {
+        console.error('Failed to load AI models:', error);
+    } finally {
+        elements.beginBtn.disabled = false;
+        elements.beginBtn.textContent = "I'm Ready";
+    }
+    
     measurementState.currentHand = 'left';
     updateCaptureInstructions();
     showScreen(screens.capture);
@@ -469,6 +455,10 @@ elements.retakeBtn.addEventListener('click', async () => {
     measurementState.currentHand = 'left';
     measurementState.leftHandPhoto = null;
     measurementState.rightHandPhoto = null;
+    leftHandReferenceData = null;
+    rightHandReferenceData = null;
+    leftHandData = null;
+    rightHandData = null;
     updateCaptureInstructions();
     showScreen(screens.capture);
     await startCamera();
