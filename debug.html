@@ -3,13 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SizeKit Debug Mode</title>
+    <title>SizeKit Debug - Real-Time Detection</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -19,15 +15,9 @@
         }
 
         #container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-
-        #camera-container {
-            flex: 1;
             position: relative;
-            background: #000;
+            width: 100vw;
+            height: 100vh;
         }
 
         #video {
@@ -45,177 +35,118 @@
             pointer-events: none;
         }
 
-        #info-panel {
-            background: rgba(0, 0, 0, 0.95);
-            padding: 1rem;
-            max-height: 50vh;
-            overflow-y: auto;
-            border-top: 2px solid #667eea;
-        }
-
-        .metric {
-            margin: 0.5rem 0;
-            padding: 0.5rem;
-            background: rgba(102, 126, 234, 0.1);
-            border-radius: 4px;
+        #measurements {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 10px;
             font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.9rem;
+            font-size: 14px;
+            max-height: 40vh;
+            overflow-y: auto;
         }
 
-        .metric-label {
-            color: #667eea;
+        .scale-info {
+            font-size: 20px;
             font-weight: bold;
-        }
-
-        .metric-value {
-            color: #fff;
-            margin-left: 0.5rem;
-        }
-
-        .status {
-            padding: 0.75rem;
-            margin: 0.5rem 0;
-            border-radius: 6px;
-            font-weight: 600;
-        }
-
-        .status.success {
-            background: rgba(76, 175, 80, 0.2);
             color: #4caf50;
+            margin-bottom: 10px;
+            text-align: center;
         }
 
-        .status.error {
-            background: rgba(244, 67, 54, 0.2);
-            color: #f44336;
-        }
-
-        .status.processing {
-            background: rgba(255, 193, 7, 0.2);
-            color: #ffc107;
-        }
-
-        #controls {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        button {
-            flex: 1;
-            padding: 1rem;
-            font-size: 1rem;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        #start-btn {
-            background: #667eea;
-            color: white;
-        }
-
-        #capture-btn {
-            background: #4caf50;
-            color: white;
-        }
-
-        #capture-btn:disabled {
-            background: #666;
-            cursor: not-allowed;
-        }
-
-        button:active {
-            transform: scale(0.98);
-        }
-
-        .measurements {
-            margin-top: 1rem;
-        }
-
-        .nail-measurement {
-            padding: 0.5rem;
-            margin: 0.25rem 0;
-            background: rgba(255, 255, 255, 0.05);
+        .nail {
+            padding: 8px;
+            margin: 5px 0;
+            background: rgba(102, 126, 234, 0.2);
             border-left: 3px solid #667eea;
             display: flex;
             justify-content: space-between;
         }
 
         .finger-name {
-            font-weight: 600;
-            color: #667eea;
-        }
-
-        .measurement-details {
-            font-family: 'Monaco', monospace;
-            font-size: 0.85rem;
-        }
-
-        h3 {
-            color: #667eea;
-            margin: 1rem 0 0.5rem 0;
-            font-size: 1.1rem;
-        }
-
-        .big-number {
-            font-size: 1.5rem;
             font-weight: bold;
+            color: #667eea;
+        }
+
+        .measurement-value {
             color: #4caf50;
         }
 
-        .canvas-debug {
+        #start-overlay {
             position: absolute;
             top: 0;
             left: 0;
-            pointer-events: none;
-            opacity: 0.7;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        #start-overlay.hidden {
+            display: none;
+        }
+
+        #start-btn {
+            padding: 20px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            border: none;
+            border-radius: 15px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.5);
+        }
+
+        #start-btn:active {
+            transform: scale(0.98);
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            background: rgba(255, 193, 7, 0.3);
+            border-radius: 5px;
+            margin-bottom: 10px;
         }
     </style>
     
-    <!-- TensorFlow.js and MediaPipe -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7"></script>
 </head>
 <body>
     <div id="container">
-        <div id="camera-container">
-            <video id="video" autoplay playsinline></video>
-            <canvas id="overlay" class="canvas-debug"></canvas>
-        </div>
-        
-        <div id="info-panel">
-            <div id="controls">
-                <button id="start-btn">Start Camera</button>
-                <button id="capture-btn" disabled>Analyze Hand</button>
-            </div>
-            
-            <div id="status" class="status processing">Ready to start...</div>
-            
-            <div id="detection-info"></div>
-            <div id="measurements-info"></div>
+        <video id="video" autoplay playsinline></video>
+        <canvas id="overlay"></canvas>
+        <div id="measurements"></div>
+        <div id="start-overlay">
+            <button id="start-btn">📸 Start Camera</button>
         </div>
     </div>
 
     <script src="detection.js"></script>
     <script>
-        // Elements
         const video = document.getElementById('video');
         const overlay = document.getElementById('overlay');
         const ctx = overlay.getContext('2d');
-        const statusEl = document.getElementById('status');
-        const detectionInfo = document.getElementById('detection-info');
-        const measurementsInfo = document.getElementById('measurements-info');
+        const measurements = document.getElementById('measurements');
         const startBtn = document.getElementById('start-btn');
-        const captureBtn = document.getElementById('capture-btn');
+        const startOverlay = document.getElementById('start-overlay');
 
         let stream = null;
-        let analyzing = false;
+        let handposeModel = null;
+        let lastReference = null;
 
-        // Update canvas size to match video
-        function updateCanvasSize() {
+        // Resize canvas to match video
+        function resizeCanvas() {
             overlay.width = video.videoWidth;
             overlay.height = video.videoHeight;
         }
@@ -223,9 +154,6 @@
         // Start camera
         startBtn.addEventListener('click', async () => {
             try {
-                statusEl.className = 'status processing';
-                statusEl.textContent = '📷 Starting camera...';
-                
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: { exact: "environment" },
@@ -237,140 +165,100 @@
                 
                 video.srcObject = stream;
                 
-                video.addEventListener('loadedmetadata', () => {
-                    updateCanvasSize();
-                    statusEl.className = 'status success';
-                    statusEl.textContent = '✅ Camera active - Place hand with credit card and tap Analyze';
-                    captureBtn.disabled = false;
-                    startBtn.textContent = 'Camera Running';
-                    startBtn.disabled = true;
+                video.addEventListener('loadedmetadata', async () => {
+                    resizeCanvas();
+                    startOverlay.classList.add('hidden');
+                    
+                    // Load AI model
+                    measurements.innerHTML = '<div class="status">🤖 Loading AI model...</div>';
+                    handposeModel = await SizeKitDetection.loadHandposeModel();
+                    
+                    // Start continuous detection
+                    detectContinuously();
                 });
                 
             } catch (error) {
-                statusEl.className = 'status error';
-                statusEl.textContent = '❌ Camera error: ' + error.message;
+                alert('Camera error: ' + error.message);
             }
         });
 
-        // Capture and analyze
-        captureBtn.addEventListener('click', async () => {
-            if (analyzing) return;
-            
-            analyzing = true;
-            captureBtn.textContent = 'Analyzing...';
-            captureBtn.disabled = true;
+        // Continuous detection loop
+        async function detectContinuously() {
+            if (!video.srcObject) return;
             
             try {
-                // Capture photo
+                // Capture current frame
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 const context = canvas.getContext('2d');
                 context.drawImage(video, 0, 0);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
                 
                 const photo = {
-                    dataUrl: dataUrl,
+                    dataUrl: canvas.toDataURL('image/jpeg', 0.9),
                     width: canvas.width,
                     height: canvas.height
                 };
                 
-                // Load AI model if needed
-                statusEl.className = 'status processing';
-                statusEl.textContent = '🤖 Loading AI models...';
-                await SizeKitDetection.loadHandposeModel();
+                // Detect reference object (only once or periodically)
+                if (!lastReference) {
+                    try {
+                        lastReference = await SizeKitDetection.detectReferenceObject(photo);
+                    } catch (e) {
+                        // Reference not found yet, keep trying
+                    }
+                }
                 
-                // Detect reference object
-                statusEl.textContent = '🔍 Detecting reference object...';
-                const reference = await SizeKitDetection.detectReferenceObject(photo);
-                
-                displayReferenceInfo(reference);
-                
-                // Detect hand
-                statusEl.textContent = '👋 Detecting hand...';
-                const hand = await SizeKitDetection.detectHandAndNails(photo, reference);
-                
-                // Measure nails
-                statusEl.textContent = '📏 Measuring nails...';
-                const measurements = SizeKitDetection.measureNails(hand, reference);
-                
-                displayMeasurements(measurements, reference);
-                
-                // Draw overlays
-                drawOverlays(hand, reference);
-                
-                statusEl.className = 'status success';
-                statusEl.textContent = '✅ Analysis complete!';
+                // Detect hand if we have reference
+                if (lastReference) {
+                    try {
+                        const hand = await SizeKitDetection.detectHandAndNails(photo, lastReference);
+                        const results = SizeKitDetection.measureNails(hand, lastReference);
+                        
+                        // Display results
+                        displayResults(results, lastReference);
+                        
+                        // Draw overlays
+                        drawOverlays(hand, lastReference);
+                    } catch (e) {
+                        // Hand not detected, show waiting message
+                        measurements.innerHTML = `
+                            <div class="status">✋ Waiting for hand...</div>
+                            <div class="scale-info">Scale: ${lastReference.pixelsPerMm.toFixed(2)} px/mm</div>
+                        `;
+                    }
+                }
                 
             } catch (error) {
-                statusEl.className = 'status error';
-                statusEl.textContent = '❌ Error: ' + error.message;
-                console.error('Analysis error:', error);
-            } finally {
-                analyzing = false;
-                captureBtn.textContent = 'Analyze Hand';
-                captureBtn.disabled = false;
+                console.error('Detection error:', error);
             }
-        });
-
-        function displayReferenceInfo(reference) {
-            detectionInfo.innerHTML = `
-                <h3>📐 Reference Object Detection</h3>
-                <div class="metric">
-                    <span class="metric-label">Type:</span>
-                    <span class="metric-value">${reference.type === 'creditCard' ? 'Credit Card' : 'Quarter'}</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Width (pixels):</span>
-                    <span class="metric-value big-number">${reference.boundingBox ? reference.boundingBox.width.toFixed(0) : 'N/A'} px</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Expected Size:</span>
-                    <span class="metric-value">${reference.referenceSizeMm} mm</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">📏 SCALE:</span>
-                    <span class="metric-value big-number">${reference.pixelsPerMm.toFixed(2)} pixels/mm</span>
-                </div>
-                <div class="metric">
-                    <span class="metric-label">Confidence:</span>
-                    <span class="metric-value">${(reference.confidence * 100).toFixed(0)}%</span>
-                </div>
-            `;
+            
+            // Continue loop
+            requestAnimationFrame(detectContinuously);
         }
 
-        function displayMeasurements(measurements, reference) {
-            let html = `
-                <h3>📏 Left Hand Measurements</h3>
-                <div class="metric">
-                    <span class="metric-label">Scale Used:</span>
-                    <span class="metric-value">${reference.pixelsPerMm.toFixed(2)} px/mm</span>
-                </div>
-                <div class="measurements">
-            `;
+        function displayResults(results, reference) {
+            let html = `<div class="scale-info">📏 Scale: ${reference.pixelsPerMm.toFixed(2)} px/mm</div>`;
             
-            measurements.forEach(nail => {
+            results.forEach(nail => {
                 html += `
-                    <div class="nail-measurement">
+                    <div class="nail">
                         <span class="finger-name">${nail.finger}</span>
-                        <span class="measurement-details">
-                            <strong>${nail.mm}mm</strong> → Size ${nail.size}
-                        </span>
+                        <span class="measurement-value">${nail.mm}mm → Size ${nail.size}</span>
                     </div>
                 `;
             });
             
-            html += '</div>';
-            measurementsInfo.innerHTML = html;
+            measurements.innerHTML = html;
         }
 
         function drawOverlays(hand, reference) {
             ctx.clearRect(0, 0, overlay.width, overlay.height);
             
-            // Draw reference object box
+            // Draw reference box (GREEN)
             if (reference.boundingBox) {
                 ctx.strokeStyle = '#4caf50';
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 4;
                 ctx.strokeRect(
                     reference.boundingBox.x,
                     reference.boundingBox.y,
@@ -378,32 +266,49 @@
                     reference.boundingBox.height
                 );
                 ctx.fillStyle = '#4caf50';
-                ctx.font = '20px Arial';
-                ctx.fillText('Reference', reference.boundingBox.x, reference.boundingBox.y - 10);
+                ctx.font = 'bold 24px Arial';
+                ctx.fillText('✓ Reference', reference.boundingBox.x, reference.boundingBox.y - 10);
             }
             
-            // Draw hand landmarks
+            // Draw hand landmarks (BLUE)
             if (hand.keypoints) {
+                // Draw all landmarks
                 ctx.fillStyle = '#667eea';
                 hand.keypoints.forEach(point => {
                     ctx.beginPath();
-                    ctx.arc(point[0], point[1], 5, 0, 2 * Math.PI);
+                    ctx.arc(point[0], point[1], 6, 0, 2 * Math.PI);
                     ctx.fill();
                 });
                 
-                // Draw fingertip labels
+                // Draw connections between landmarks
+                ctx.strokeStyle = 'rgba(102, 126, 234, 0.5)';
+                ctx.lineWidth = 2;
+                const connections = [
+                    [0,1],[1,2],[2,3],[3,4], // thumb
+                    [0,5],[5,6],[6,7],[7,8], // index
+                    [0,9],[9,10],[10,11],[11,12], // middle
+                    [0,13],[13,14],[14,15],[15,16], // ring
+                    [0,17],[17,18],[18,19],[19,20] // pinky
+                ];
+                connections.forEach(([a,b]) => {
+                    ctx.beginPath();
+                    ctx.moveTo(hand.keypoints[a][0], hand.keypoints[a][1]);
+                    ctx.lineTo(hand.keypoints[b][0], hand.keypoints[b][1]);
+                    ctx.stroke();
+                });
+                
+                // Label fingertips
                 const fingerTips = [4, 8, 12, 16, 20];
-                const fingerNames = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+                const fingerNames = ['👍', '☝️', '🖕', '💍', '🤙'];
                 fingerTips.forEach((tipIndex, i) => {
                     const tip = hand.keypoints[tipIndex];
-                    ctx.fillStyle = '#fff';
-                    ctx.font = 'bold 16px Arial';
-                    ctx.fillText(fingerNames[i], tip[0] + 10, tip[1]);
+                    ctx.font = '24px Arial';
+                    ctx.fillText(fingerNames[i], tip[0] + 15, tip[1] - 15);
                 });
             }
         }
 
-        console.log('🎯 SizeKit Debug Mode Ready');
+        console.log('🎯 SizeKit Real-Time Debug Mode');
         console.log('📱 Tap "Start Camera" to begin');
     </script>
 </body>
