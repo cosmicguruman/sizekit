@@ -1,20 +1,24 @@
-# SizeKit - Phase 1: Back Camera Access
+# SizeKit - AI Nail Size Measurement
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
-![Phase](https://img.shields.io/badge/phase-1%20%7C%20Camera%20Access-purple.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-green.svg)
+![Phase](https://img.shields.io/badge/phase-2%20%7C%20AI%20Measurement-purple.svg)
+![AI](https://img.shields.io/badge/AI-TensorFlow.js%20%7C%20MediaPipe-orange.svg)
 
-A simple web application that reliably opens the **back camera** on mobile devices. This is the foundation for the nail scanning feature in the 4TRACK application.
+AI-powered nail size measurement web application for press-on nails. Measure all 10 fingernails accurately using just your phone camera and a credit card or quarter.
 
 **🔗 Repository:** https://github.com/cosmicguruman/sizekit
 
 ## 🎯 What This Does
 
-- Opens back camera automatically (not front-facing)
-- Works on iOS Safari, Chrome mobile, and Android browsers
-- Full-screen camera preview
-- Graceful error handling and permission management
-- Mobile-optimized UI
+- **AI-Powered Measurement**: Automatically measures all 10 fingernails using computer vision
+- **Dual Reference Support**: Works with credit card OR quarter for scale calibration
+- **Instant Results**: Get nail size numbers (0-11) in seconds
+- **High Accuracy**: ±0.5mm precision using reference object detection
+- **Two-Photo Workflow**: Capture left hand, then right hand with guided overlays
+- **Smart Detection**: TensorFlow.js + MediaPipe for hand pose and nail location
+- **Share Results**: Copy or share measurements directly to nail artist
+- **Mobile-Optimized**: Works on iOS Safari, Chrome mobile, and Android browsers
 
 ## ✅ Success Criteria
 
