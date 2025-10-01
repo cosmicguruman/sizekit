@@ -17,10 +17,104 @@
     <!-- Landing Screen -->
     <div id="landing-screen" class="screen active">
         <div class="container">
-            <h1>SizeKit Camera Test</h1>
-            <p class="subtitle">Phase 1: Back Camera Access</p>
-            <p class="instruction">We'll ask to use your camera to get started</p>
-            <button id="open-camera-btn" class="primary-btn">Open Camera</button>
+            <h1>SizeKit</h1>
+            <p class="subtitle">Nail Size Measurement</p>
+            <p class="instruction">Measure your nail sizes in seconds using your phone camera</p>
+            <button id="start-measurement-btn" class="primary-btn">Start Measurement</button>
+        </div>
+    </div>
+
+    <!-- Instructions Screen -->
+    <div id="instructions-screen" class="screen">
+        <div class="container">
+            <h2>What You'll Need</h2>
+            <div class="instruction-card">
+                <p class="step-title">📱 Your phone camera</p>
+                <p class="step-title">✋ Both hands</p>
+                <p class="step-title">💳 A credit card OR 25¢ quarter</p>
+            </div>
+            <div class="instruction-steps">
+                <h3>How it works:</h3>
+                <ol>
+                    <li>Place your LEFT hand flat on a table</li>
+                    <li>Put credit card or quarter next to your hand</li>
+                    <li>Take a photo from above</li>
+                    <li>Repeat for RIGHT hand</li>
+                    <li>Get your nail sizes instantly!</li>
+                </ol>
+            </div>
+            <button id="begin-btn" class="primary-btn">I'm Ready</button>
+            <button id="back-to-home-btn" class="secondary-btn">Back</button>
+        </div>
+    </div>
+
+    <!-- Capture Screen -->
+    <div id="capture-screen" class="screen">
+        <video id="camera-preview-capture" autoplay playsinline></video>
+        <div class="capture-overlay">
+            <div class="guide-box"></div>
+            <div class="instruction-banner">
+                <h3 id="capture-instruction">Place LEFT hand with reference object</h3>
+                <p id="capture-hint">Credit card or quarter next to hand</p>
+            </div>
+        </div>
+        <div class="capture-controls">
+            <button id="capture-photo-btn" class="capture-btn">📸 Capture</button>
+            <button id="cancel-capture-btn" class="secondary-btn">Cancel</button>
+        </div>
+        <div id="capture-loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Analyzing photo...</p>
+        </div>
+    </div>
+
+    <!-- Processing Screen -->
+    <div id="processing-screen" class="screen">
+        <div class="container">
+            <h2>Analyzing Your Nails</h2>
+            <div class="processing-animation">
+                <div class="spinner"></div>
+            </div>
+            <p class="processing-status" id="processing-status">Detecting reference object...</p>
+            <div class="progress-steps">
+                <div class="step" id="step-reference">
+                    <span class="step-icon">⏳</span>
+                    <span>Reference Object</span>
+                </div>
+                <div class="step" id="step-hand">
+                    <span class="step-icon">⏳</span>
+                    <span>Hand Detection</span>
+                </div>
+                <div class="step" id="step-nails">
+                    <span class="step-icon">⏳</span>
+                    <span>Nail Measurement</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Screen -->
+    <div id="results-screen" class="screen">
+        <div class="container">
+            <h2>Your Nail Sizes</h2>
+            <div class="results-container">
+                <div class="hand-results">
+                    <h3>Left Hand</h3>
+                    <div class="nail-sizes" id="left-hand-sizes">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+                <div class="hand-results">
+                    <h3>Right Hand</h3>
+                    <div class="nail-sizes" id="right-hand-sizes">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+            <div class="results-actions">
+                <button id="share-results-btn" class="primary-btn">Share Results</button>
+                <button id="retake-btn" class="secondary-btn">Retake Photos</button>
+            </div>
         </div>
     </div>
 
@@ -47,5 +141,6 @@
     </div>
 
     <script src="camera.js"></script>
+    <script src="measurement.js"></script>
 </body>
 </html>
