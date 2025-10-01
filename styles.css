@@ -405,6 +405,7 @@ button {
 #results-screen {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     overflow-y: auto;
+    padding: 1rem 0; /* Add padding for scrollable content */
 }
 
 .results-container {

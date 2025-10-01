@@ -105,15 +105,24 @@ async function detectCreditCard(canvas, ctx) {
     // Simple rectangle detection using edge contrast
     const rectangles = findRectangles(imageData);
     
+    console.log(`🔍 Found ${rectangles.length} potential rectangles`);
+    
     // Look for rectangle with credit card aspect ratio
     for (const rect of rectangles) {
         const aspectRatio = rect.width / rect.height;
         const targetRatio = REFERENCE_OBJECTS.creditCard.aspectRatio;
         const tolerance = REFERENCE_OBJECTS.creditCard.toleranceRatio;
         
+        console.log(`  Rectangle: ${rect.width}x${rect.height}px, aspect: ${aspectRatio.toFixed(2)} (target: ${targetRatio.toFixed(2)})`);
+        
         if (Math.abs(aspectRatio - targetRatio) / targetRatio < tolerance) {
             // Found likely credit card
             const pixelsPerMm = rect.width / REFERENCE_OBJECTS.creditCard.widthMm;
+            
+            console.log(`✅ Credit card detected!`);
+            console.log(`   Card width: ${rect.width}px`);
+            console.log(`   Expected: 85.6mm`);
+            console.log(`   Scale: ${pixelsPerMm.toFixed(2)} pixels/mm`);
             
             return {
                 type: 'creditCard',
@@ -125,6 +134,7 @@ async function detectCreditCard(canvas, ctx) {
         }
     }
     
+    console.warn('⚠️ No credit card found in rectangles');
     return null;
 }
 
@@ -381,6 +391,8 @@ function calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight) {
     // Nail width is approximately 0.4-0.5 of finger length
     const estimatedNailWidth = fingerLength * 0.45;
     
+    console.log(`  Finger segment: ${fingerLength.toFixed(1)}px → Nail width: ${estimatedNailWidth.toFixed(1)}px`);
+    
     return {
         pixels: estimatedNailWidth,
         location: { x: tip[0], y: tip[1] }
@@ -400,12 +412,16 @@ function calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight) {
 function measureNails(handData, referenceData) {
     const pixelsPerMm = referenceData.pixelsPerMm;
     
+    console.log(`📏 Measuring nails with scale: ${pixelsPerMm.toFixed(2)} pixels/mm`);
+    
     return handData.nails.map(nail => {
         // Convert pixels to millimeters
         const widthMm = nail.width.pixels / pixelsPerMm;
         
         // Convert mm to size number
         const sizeNumber = mmToSizeNumber(widthMm);
+        
+        console.log(`  ${nail.finger}: ${nail.width.pixels.toFixed(1)}px ÷ ${pixelsPerMm.toFixed(2)} = ${widthMm.toFixed(1)}mm → Size ${sizeNumber}`);
         
         return {
             finger: nail.finger,
