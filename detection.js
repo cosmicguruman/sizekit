@@ -97,45 +97,114 @@ async function detectReferenceObject(photo) {
 }
 
 /**
- * Detect credit card using edge detection and contour analysis
+ * Detect credit card - SIMPLIFIED TO THE MAX
+ * Just scan for bright rectangles and pick the best one
  */
 async function detectCreditCard(canvas, ctx) {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
     
-    // Simple rectangle detection using edge contrast
-    const rectangles = findRectangles(imageData);
+    console.log(`📐 Scanning ${width}x${height}px image for credit card...`);
     
-    console.log(`🔍 Found ${rectangles.length} potential rectangles`);
+    const targetAspect = 1.586;
+    const minCardWidth = width * 0.15;  // Card must be at least 15% of image
+    const maxCardWidth = width * 0.50;  // Card must be at most 50% of image
     
-    // Look for rectangle with credit card aspect ratio
-    for (const rect of rectangles) {
-        const aspectRatio = rect.width / rect.height;
-        const targetRatio = REFERENCE_OBJECTS.creditCard.aspectRatio;
-        const tolerance = REFERENCE_OBJECTS.creditCard.toleranceRatio;
-        
-        console.log(`  Rectangle: ${rect.width}x${rect.height}px, aspect: ${aspectRatio.toFixed(2)} (target: ${targetRatio.toFixed(2)})`);
-        
-        if (Math.abs(aspectRatio - targetRatio) / targetRatio < tolerance) {
-            // Found likely credit card
-            const pixelsPerMm = rect.width / REFERENCE_OBJECTS.creditCard.widthMm;
-            
-            console.log(`✅ Credit card detected!`);
-            console.log(`   Card width: ${rect.width}px`);
-            console.log(`   Expected: 85.6mm`);
-            console.log(`   Scale: ${pixelsPerMm.toFixed(2)} pixels/mm`);
-            
-            return {
-                type: 'creditCard',
-                pixelsPerMm: pixelsPerMm,
-                confidence: 0.85,
-                boundingBox: rect,
-                referenceSizeMm: REFERENCE_OBJECTS.creditCard.widthMm
-            };
+    let bestRect = null;
+    let bestScore = 0;
+    
+    // Scan image in a grid pattern
+    const step = 30;
+    for (let y = 0; y < height - 100; y += step) {
+        for (let x = 0; x < width - 100; x += step) {
+            // Try different rectangle sizes
+            for (let w = minCardWidth; w <= maxCardWidth; w += 50) {
+                const h = w / targetAspect;
+                
+                if (x + w > width || y + h > height) continue;
+                
+                // Check if this region looks like a card (bright, uniform)
+                const brightness = getRegionBrightness(data, x, y, w, h, width);
+                const uniformity = getRegionUniformity(data, x, y, w, h, width);
+                
+                const score = brightness * uniformity * (w / width); // Prefer larger cards
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestRect = { x: Math.floor(x), y: Math.floor(y), width: Math.floor(w), height: Math.floor(h) };
+                }
+            }
         }
     }
     
-    console.warn('⚠️ No credit card found in rectangles');
+    if (bestRect) {
+        const pixelsPerMm = bestRect.width / 85.6;
+        
+        console.log(`✅ Credit card detected!`);
+        console.log(`   Position: (${bestRect.x}, ${bestRect.y})`);
+        console.log(`   Size: ${bestRect.width}x${bestRect.height}px`);
+        console.log(`   Scale: ${pixelsPerMm.toFixed(2)} pixels/mm`);
+        
+        return {
+            type: 'creditCard',
+            pixelsPerMm: pixelsPerMm,
+            confidence: Math.min(bestScore * 10, 0.95),
+            boundingBox: bestRect,
+            referenceSizeMm: 85.6
+        };
+    }
+    
+    console.warn('⚠️ No credit card found');
     return null;
+}
+
+// Helper: Get average brightness of a region
+function getRegionBrightness(data, x, y, w, h, imgWidth) {
+    let sum = 0;
+    let count = 0;
+    const samples = 50; // Sample 50 pixels
+    
+    for (let i = 0; i < samples; i++) {
+        const px = x + Math.random() * w;
+        const py = y + Math.random() * h;
+        const idx = (Math.floor(py) * imgWidth + Math.floor(px)) * 4;
+        
+        if (idx >= 0 && idx < data.length - 3) {
+            // Calculate grayscale brightness
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            sum += brightness;
+            count++;
+        }
+    }
+    
+    return count > 0 ? sum / count / 255 : 0; // Normalize to 0-1
+}
+
+// Helper: Get uniformity (low variance = more uniform)
+function getRegionUniformity(data, x, y, w, h, imgWidth) {
+    const samples = 30;
+    const brightnesses = [];
+    
+    for (let i = 0; i < samples; i++) {
+        const px = x + Math.random() * w;
+        const py = y + Math.random() * h;
+        const idx = (Math.floor(py) * imgWidth + Math.floor(px)) * 4;
+        
+        if (idx >= 0 && idx < data.length - 3) {
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            brightnesses.push(brightness);
+        }
+    }
+    
+    if (brightnesses.length === 0) return 0;
+    
+    const mean = brightnesses.reduce((a, b) => a + b) / brightnesses.length;
+    const variance = brightnesses.reduce((sum, b) => sum + Math.pow(b - mean, 2), 0) / brightnesses.length;
+    
+    // Low variance = high uniformity
+    return 1 / (1 + variance / 1000);
 }
 
 /**
