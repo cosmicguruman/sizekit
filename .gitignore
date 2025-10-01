@@ -34,3 +34,6 @@ coverage/
 # Build outputs
 dist/
 build/
+
+# Old code backups
+old_code/

@@ -145,8 +145,10 @@
         </div>
     </div>
 
-    <script src="camera.js"></script>
+    <!-- Legacy detection.js (uses global scope for TensorFlow.js) -->
     <script src="detection.js"></script>
-    <script src="measurement.js"></script>
+    
+    <!-- Modern modular architecture -->
+    <script type="module" src="src/app.js"></script>
 </body>
 </html>
