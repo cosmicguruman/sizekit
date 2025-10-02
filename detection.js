@@ -466,37 +466,41 @@ function extractNailLocations(hand, imageWidth, imageHeight, imageData = null) {
 }
 
 /**
- * Calculate nail width from hand landmarks - NEW: ACTUAL NAIL DETECTION
+ * Calculate nail width from hand landmarks - STRICT MODE: DETECTION ONLY
  */
 function calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight, imageData = null) {
     const tip = landmarks[tipIndex];
-    const secondJoint = landmarks[tipIndex - 2];
     
-    // If we have image data, detect actual nail boundary
-    if (imageData) {
-        const actualWidth = detectActualNailBoundary(imageData, tip[0], tip[1], landmarks, tipIndex);
-        if (actualWidth > 0) {
-            console.log(`  ✨ ACTUAL NAIL detected: ${actualWidth.toFixed(1)}px`);
-            return {
-                pixels: actualWidth,
-                location: { x: tip[0], y: tip[1] },
-                method: 'segmentation'
-            };
-        }
+    // MUST have image data - no fallback
+    if (!imageData) {
+        console.error(`  ❌ No image data provided for nail detection`);
+        return {
+            pixels: 0,
+            location: { x: tip[0], y: tip[1] },
+            method: 'failed',
+            error: 'No image data'
+        };
     }
     
-    // Fallback: estimate based on finger length
-    const dx = tip[0] - secondJoint[0];
-    const dy = tip[1] - secondJoint[1];
-    const fingerLength = Math.sqrt(dx * dx + dy * dy);
-    const estimatedNailWidth = fingerLength * 0.45;
+    // Detect actual nail boundary
+    const actualWidth = detectActualNailBoundary(imageData, tip[0], tip[1], landmarks, tipIndex);
     
-    console.log(`  ⚠️ ESTIMATED nail width: ${estimatedNailWidth.toFixed(1)}px (fallback)`);
+    if (actualWidth > 0) {
+        console.log(`  ✨ NAIL DETECTED: ${actualWidth.toFixed(1)}px`);
+        return {
+            pixels: actualWidth,
+            location: { x: tip[0], y: tip[1] },
+            method: 'segmentation'
+        };
+    }
     
+    // Detection failed - NO FALLBACK
+    console.error(`  ❌ NAIL DETECTION FAILED - insufficient nail pixels`);
     return {
-        pixels: estimatedNailWidth,
+        pixels: 0,
         location: { x: tip[0], y: tip[1] },
-        method: 'estimation'
+        method: 'failed',
+        error: 'Detection failed'
     };
 }
 
