@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Detection Test</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Status Display */
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.90);
+            backdrop-filter: blur(10px);
+            padding: 25px 35px;
+            border-radius: 20px;
+            text-align: center;
+            min-width: 350px;
+            z-index: 10;
+            border: 3px solid #666;
+        }
+
+        #status.detected {
+            border: 3px solid #4caf50;
+            background: rgba(76, 175, 80, 0.2);
+        }
+
+        #status-text {
+            color: #fff;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        #scale-info {
+            color: #4caf50;
+            font-size: 28px;
+            font-weight: bold;
+            margin: 15px 0;
+        }
+
+        #card-details {
+            color: #aaa;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-top: 10px;
+        }
+
+        /* Loading */
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #loading-overlay.hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #333;
+            border-top: 4px solid #4caf50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading-text {
+            font-size: 18px;
+            color: #ccc;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <!-- Video Feed -->
+        <video id="video" autoplay playsinline></video>
+
+        <!-- Overlay Canvas -->
+        <canvas id="overlay"></canvas>
+
+        <!-- Status Display -->
+        <div id="status">
+            <div id="status-text">📱 Show Credit Card</div>
+            <div id="scale-info"></div>
+            <div id="card-details"></div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay">
+            <div class="spinner"></div>
+            <div id="loading-text">Starting camera...</div>
+        </div>
+    </div>
+
+    <!-- Detection Logic -->
+    <script src="detection.js"></script>
+
+    <script>
+        console.log('🎯 Card Detection Test');
+
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const ctx = overlay.getContext('2d');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        const statusDiv = document.getElementById('status');
+        const statusText = document.getElementById('status-text');
+        const scaleInfo = document.getElementById('scale-info');
+        const cardDetails = document.getElementById('card-details');
+
+        let stream = null;
+        let detectionRunning = false;
+
+        // Resize canvas to match video
+        function resizeCanvas() {
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+            console.log('🎨 Canvas resized to', overlay.width, 'x', overlay.height);
+        }
+
+        // Auto-start camera on page load
+        async function startCamera() {
+            console.log('🔵 Auto-starting camera...');
+            
+            try {
+                loadingText.textContent = '📷 Requesting camera access...';
+                console.log('📷 Requesting camera access...');
+                
+                // Try exact environment first
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: { exact: "environment" },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                    console.log('✅ Camera started with exact environment');
+                } catch (e) {
+                    console.log('⚠️ Exact environment failed, trying fallback...', e);
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: "environment",
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                    console.log('✅ Camera started with fallback');
+                }
+                
+                video.srcObject = stream;
+                console.log('📹 Stream attached to video element');
+                
+                video.addEventListener('loadedmetadata', async () => {
+                    console.log('📹 Video metadata loaded');
+                    resizeCanvas();
+                    
+                    loadingText.textContent = '✅ Camera ready!';
+                    
+                    setTimeout(() => {
+                        loadingOverlay.classList.add('hidden');
+                        console.log('✅ Starting card detection...');
+                        detectCardContinuously();
+                    }, 500);
+                });
+                
+            } catch (error) {
+                console.error('❌ Camera error:', error);
+                loadingText.innerHTML = `
+                    ❌ Camera Failed<br>
+                    <small style="font-size: 16px; font-weight: normal;">
+                    ${error.name}: ${error.message}<br><br>
+                    Check:<br>
+                    • Camera permission allowed?<br>
+                    • On HTTPS?<br>
+                    • Camera not in use by another app?
+                    </small>
+                `;
+            }
+        }
+
+        // Continuous card detection loop
+        async function detectCardContinuously() {
+            if (detectionRunning) return;
+            detectionRunning = true;
+
+            console.log('🔄 Starting card detection loop...');
+
+            async function loop() {
+                try {
+                    // Clear canvas
+                    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+                    // Capture current frame
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const captureCtx = canvas.getContext('2d');
+                    captureCtx.drawImage(video, 0, 0);
+
+                    // Detect credit card
+                    const reference = await SizeKitDetection.detectReferenceObject({
+                        dataUrl: canvas.toDataURL('image/jpeg', 0.8)
+                    });
+
+                    if (!reference) {
+                        // NO CARD DETECTED
+                        statusDiv.className = '';
+                        statusText.textContent = '❌ No Card Detected';
+                        statusText.style.color = '#f44336';
+                        scaleInfo.textContent = '';
+                        cardDetails.textContent = 'Place credit card in frame';
+                    } else {
+                        // CARD DETECTED!
+                        statusDiv.className = 'detected';
+                        statusText.textContent = '✅ Card Detected!';
+                        statusText.style.color = '#4caf50';
+                        
+                        // Display scale prominently
+                        scaleInfo.textContent = `${reference.pixelsPerMm.toFixed(2)} px/mm`;
+                        
+                        // Display details
+                        const box = reference.boundingBox;
+                        cardDetails.innerHTML = `
+                            Position: (${box.x}, ${box.y})<br>
+                            Size: ${box.width} × ${box.height} px<br>
+                            Reference: ${reference.referenceSizeMm}mm credit card<br>
+                            Confidence: ${(reference.confidence * 100).toFixed(0)}%
+                        `;
+
+                        // Draw big green box around card
+                        ctx.strokeStyle = '#4caf50';
+                        ctx.lineWidth = 5;
+                        ctx.setLineDash([15, 10]);
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+                        ctx.setLineDash([]);
+                        
+                        // Draw corners (for extra visibility)
+                        const cornerSize = 30;
+                        ctx.strokeStyle = '#4caf50';
+                        ctx.lineWidth = 6;
+                        
+                        // Top-left
+                        ctx.beginPath();
+                        ctx.moveTo(box.x, box.y + cornerSize);
+                        ctx.lineTo(box.x, box.y);
+                        ctx.lineTo(box.x + cornerSize, box.y);
+                        ctx.stroke();
+                        
+                        // Top-right
+                        ctx.beginPath();
+                        ctx.moveTo(box.x + box.width - cornerSize, box.y);
+                        ctx.lineTo(box.x + box.width, box.y);
+                        ctx.lineTo(box.x + box.width, box.y + cornerSize);
+                        ctx.stroke();
+                        
+                        // Bottom-left
+                        ctx.beginPath();
+                        ctx.moveTo(box.x, box.y + box.height - cornerSize);
+                        ctx.lineTo(box.x, box.y + box.height);
+                        ctx.lineTo(box.x + cornerSize, box.y + box.height);
+                        ctx.stroke();
+                        
+                        // Bottom-right
+                        ctx.beginPath();
+                        ctx.moveTo(box.x + box.width - cornerSize, box.y + box.height);
+                        ctx.lineTo(box.x + box.width, box.y + box.height);
+                        ctx.lineTo(box.x + box.width, box.y + box.height - cornerSize);
+                        ctx.stroke();
+                        
+                        // Label
+                        ctx.fillStyle = '#4caf50';
+                        ctx.font = 'bold 24px Arial';
+                        ctx.fillText('💳 CREDIT CARD', box.x + 10, box.y - 15);
+                        
+                        // Scale label
+                        ctx.fillStyle = '#fff';
+                        ctx.font = 'bold 20px Arial';
+                        ctx.fillText(`${reference.pixelsPerMm.toFixed(2)} px/mm`, box.x + 10, box.y + box.height + 30);
+                    }
+
+                } catch (error) {
+                    console.error('Detection error:', error);
+                    statusDiv.className = '';
+                    statusText.textContent = '❌ Detection Error';
+                    statusText.style.color = '#f44336';
+                    scaleInfo.textContent = '';
+                    cardDetails.textContent = error.message;
+                }
+
+                // Run at ~10 FPS
+                if (detectionRunning) {
+                    setTimeout(loop, 100);
+                }
+            }
+
+            loop();
+        }
+
+        // Check if detection.js loaded
+        if (typeof SizeKitDetection === 'undefined') {
+            console.error('❌ SizeKitDetection not loaded - detection.js failed to load');
+            loadingText.innerHTML = `
+                ❌ Failed to load detection.js<br>
+                <small style="font-size: 16px; font-weight: normal;">
+                Refresh the page or check console for errors
+                </small>
+            `;
+        }
+
+        // Start camera automatically when page loads
+        window.addEventListener('load', () => {
+            console.log('🎯 Page loaded, auto-starting camera...');
+            if (typeof SizeKitDetection !== 'undefined') {
+                startCamera();
+            } else {
+                loadingText.textContent = '❌ Script loading failed - check console';
+            }
+        });
+    </script>
+</body>
+</html>
+
