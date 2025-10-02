@@ -49,6 +49,7 @@
             line-height: 1.6;
             max-width: 500px;
             margin: 0 auto;
+            z-index: 10;
         }
 
         .status-line {
@@ -112,6 +113,130 @@
             color: #ccc;
             text-align: center;
         }
+
+        /* Capture Button */
+        #capture-btn {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4caf50;
+            color: #000;
+            border: none;
+            padding: 20px 50px;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.5);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+
+        #capture-btn:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+
+        #capture-btn:disabled {
+            background: #555;
+            color: #888;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        /* Results Screen */
+        #results {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+            z-index: 200;
+        }
+
+        #results.visible {
+            display: flex;
+        }
+
+        #results h2 {
+            color: #4caf50;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .result-item {
+            background: rgba(102, 126, 234, 0.2);
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 8px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .finger-name {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 16px;
+        }
+
+        .measurement {
+            text-align: right;
+        }
+
+        .mm-value {
+            font-size: 20px;
+            color: #4caf50;
+            font-weight: bold;
+        }
+
+        .size-value {
+            font-size: 14px;
+            color: #999;
+        }
+
+        .method-badge {
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            margin-left: 10px;
+        }
+
+        .method-segmentation {
+            background: #4caf50;
+            color: #000;
+        }
+
+        .method-estimation {
+            background: #ff9800;
+            color: #000;
+        }
+
+        #next-btn {
+            margin-top: 30px;
+            background: #667eea;
+            color: #fff;
+            border: none;
+            padding: 15px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .scale-info {
+            text-align: center;
+            color: #4caf50;
+            font-size: 18px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -151,6 +276,16 @@
             <div id="method-display" class="detection-method"></div>
         </div>
 
+        <!-- Capture Button -->
+        <button id="capture-btn">📷 Capture</button>
+
+        <!-- Results Screen -->
+        <div id="results">
+            <h2>✅ Measurements</h2>
+            <div id="results-list"></div>
+            <button id="next-btn">🔄 Next Shot</button>
+        </div>
+
         <!-- Loading Overlay -->
         <div id="loading-overlay">
             <div class="spinner"></div>
@@ -173,6 +308,10 @@
         const ctx = overlay.getContext('2d');
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
+        const captureBtn = document.getElementById('capture-btn');
+        const resultsDiv = document.getElementById('results');
+        const resultsList = document.getElementById('results-list');
+        const nextBtn = document.getElementById('next-btn');
 
         // Status displays
         const scaleDisplay = document.getElementById('scale-display');
@@ -185,6 +324,8 @@
 
         let stream = null;
         let detectionRunning = false;
+        let lastMeasurements = null;
+        let lastReference = null;
 
         // Resize canvas to match video
         function resizeCanvas() {
@@ -340,6 +481,8 @@
 
                             let segmentationCount = 0;
 
+                            const measurements = [];
+
                             fingerTips.forEach((tipIndex, i) => {
                                 const tip = landmarks[tipIndex];
                                 
@@ -374,10 +517,22 @@
                                 const widthMm = nailWidth.pixels / reference.pixelsPerMm;
                                 const sizeNumber = SizeKitDetection.mmToSizeNumber(widthMm);
 
+                                // Store measurement
+                                measurements.push({
+                                    finger: fingerNames[i],
+                                    mm: widthMm,
+                                    size: sizeNumber,
+                                    method: nailWidth.method
+                                });
+
                                 // Update display
                                 displays[i].textContent = `${widthMm.toFixed(1)}mm (Size ${sizeNumber})`;
                                 displays[i].style.color = nailWidth.method === 'segmentation' ? '#4caf50' : '#ff9800';
                             });
+
+                            // Store for capture
+                            lastMeasurements = measurements;
+                            lastReference = reference;
 
                             // Update method display
                             if (segmentationCount === 5) {
@@ -537,6 +692,66 @@
                 Refresh the page or check console for errors
                 </small>
             `;
+        }
+
+        // Capture button handler
+        captureBtn.addEventListener('click', () => {
+            if (!lastMeasurements || !lastReference) {
+                alert('⚠️ No measurements available. Make sure credit card and hand are detected!');
+                return;
+            }
+
+            console.log('📸 Captured measurements:', lastMeasurements);
+
+            // Stop detection loop
+            detectionRunning = false;
+
+            // Display results
+            displayResults(lastMeasurements, lastReference);
+        });
+
+        // Next button handler
+        nextBtn.addEventListener('click', () => {
+            console.log('🔄 Returning to camera view...');
+            resultsDiv.classList.remove('visible');
+            detectionRunning = false;
+            detectContinuously();
+        });
+
+        // Display results
+        function displayResults(measurements, reference) {
+            resultsList.innerHTML = '';
+
+            // Add scale info
+            const scaleInfo = document.createElement('div');
+            scaleInfo.className = 'scale-info';
+            scaleInfo.textContent = `📏 Scale: ${reference.pixelsPerMm.toFixed(2)} pixels/mm`;
+            resultsList.appendChild(scaleInfo);
+
+            // Add measurements
+            measurements.forEach(nail => {
+                const item = document.createElement('div');
+                item.className = 'result-item';
+                
+                const methodBadge = nail.method === 'segmentation' 
+                    ? '<span class="method-badge method-segmentation">✨ DETECTED</span>'
+                    : '<span class="method-badge method-estimation">⚠️ ESTIMATED</span>';
+
+                item.innerHTML = `
+                    <div>
+                        <span class="finger-name">${nail.finger}</span>
+                        ${methodBadge}
+                    </div>
+                    <div class="measurement">
+                        <div class="mm-value">${nail.mm.toFixed(1)} mm</div>
+                        <div class="size-value">Size ${nail.size}</div>
+                    </div>
+                `;
+                resultsList.appendChild(item);
+            });
+
+            // Show results screen
+            resultsDiv.classList.add('visible');
         }
 
         // Start camera automatically when page loads
