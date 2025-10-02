@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SizeKit Debug - Guided Capture</title>
+    <title>SizeKit Debug - ACTUAL Nail Detection</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -26,7 +26,7 @@
             object-fit: cover;
         }
 
-        #guides {
+        #overlay {
             position: absolute;
             top: 0;
             left: 0;
@@ -35,193 +35,47 @@
             pointer-events: none;
         }
 
-        /* Credit Card Guide Box */
-        .card-guide {
-            position: absolute;
-            border: 3px dashed #4caf50;
-            border-radius: 8px;
-            background: rgba(76, 175, 80, 0.1);
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        .card-label {
-            position: absolute;
-            top: -30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #4caf50;
-            color: #000;
-            padding: 5px 15px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: bold;
-            white-space: nowrap;
-        }
-
-        /* Hand Guide Box */
-        .hand-guide {
-            position: absolute;
-            border: 3px dashed #667eea;
-            border-radius: 15px;
-            background: rgba(102, 126, 234, 0.1);
-            animation: pulse 2s ease-in-out infinite;
-            animation-delay: 0.5s;
-        }
-
-        .hand-label {
-            position: absolute;
-            top: -30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #667eea;
-            color: #fff;
-            padding: 5px 15px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: bold;
-            white-space: nowrap;
-        }
-
-        /* Hand icon illustration */
-        .hand-icon {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 80px;
-            opacity: 0.3;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 0.6; }
-            50% { opacity: 1; }
-        }
-
-        /* Instructions */
-        #instructions {
+        /* Status Display */
+        #status {
             position: absolute;
             top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 20px;
+            right: 20px;
             background: rgba(0, 0, 0, 0.85);
             backdrop-filter: blur(10px);
-            padding: 15px 25px;
-            border-radius: 20px;
-            text-align: center;
-            max-width: 90%;
-            pointer-events: none;
-        }
-
-        #instructions h2 {
-            font-size: 18px;
-            margin-bottom: 8px;
-            color: #4caf50;
-        }
-
-        #instructions p {
+            padding: 15px;
+            border-radius: 15px;
             font-size: 14px;
-            color: #ccc;
+            line-height: 1.6;
+            max-width: 500px;
+            margin: 0 auto;
         }
 
-        /* Capture Button */
-        #capture-btn {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #4caf50;
-            color: #000;
-            border: none;
-            padding: 20px 50px;
-            border-radius: 50px;
-            font-size: 20px;
-            font-weight: bold;
-            cursor: pointer;
-            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.5);
-            transition: all 0.3s ease;
+        .status-line {
+            margin: 5px 0;
         }
 
-        #capture-btn:active {
-            transform: translateX(-50%) scale(0.95);
-        }
-
-        #capture-btn:disabled {
-            background: #555;
+        .status-label {
             color: #888;
-            box-shadow: none;
-            cursor: not-allowed;
+            display: inline-block;
+            width: 80px;
         }
 
-        /* Results Screen */
-        #results {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #000;
-            display: none;
-            flex-direction: column;
-            padding: 20px;
-            overflow-y: auto;
-        }
-
-        #results.visible {
-            display: flex;
-        }
-
-        #results h2 {
+        .status-value {
             color: #4caf50;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-
-        .result-item {
-            background: rgba(102, 126, 234, 0.2);
-            border-left: 4px solid #667eea;
-            padding: 15px;
-            margin: 8px 0;
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .finger-name {
             font-weight: bold;
+        }
+
+        .detection-method {
             color: #667eea;
-            font-size: 16px;
-        }
-
-        .measurement {
-            text-align: right;
-        }
-
-        .mm-value {
-            font-size: 20px;
-            color: #4caf50;
-            font-weight: bold;
-        }
-
-        .size-value {
-            font-size: 14px;
-            color: #999;
-        }
-
-        #retry-btn {
-            margin-top: 30px;
-            background: #667eea;
-            color: #fff;
-            border: none;
-            padding: 15px;
-            border-radius: 25px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
         }
 
         /* Loading */
-        #loading {
+        #loading-overlay {
             position: absolute;
             top: 0;
             left: 0;
@@ -235,7 +89,7 @@
             z-index: 1000;
         }
 
-        #loading.hidden {
+        #loading-overlay.hidden {
             display: none;
         }
 
@@ -254,8 +108,9 @@
         }
 
         #loading-text {
-            font-size: 16px;
+            font-size: 18px;
             color: #ccc;
+            text-align: center;
         }
     </style>
 </head>
@@ -264,27 +119,40 @@
         <!-- Video Feed -->
         <video id="video" autoplay playsinline></video>
 
-        <!-- Positioning Guides -->
-        <canvas id="guides"></canvas>
+        <!-- Overlay Canvas -->
+        <canvas id="overlay"></canvas>
 
-        <!-- Instructions -->
-        <div id="instructions">
-            <h2>📐 Position Your Hand</h2>
-            <p>Align credit card and hand with guides, then tap capture</p>
-        </div>
-
-        <!-- Capture Button -->
-        <button id="capture-btn">📷 Capture Photo</button>
-
-        <!-- Results Screen -->
-        <div id="results">
-            <h2>✅ Measurements</h2>
-            <div id="results-list"></div>
-            <button id="retry-btn">🔄 Try Again</button>
+        <!-- Status Display -->
+        <div id="status">
+            <div class="status-line">
+                <span class="status-label">Scale:</span>
+                <span id="scale-display" class="status-value">--</span>
+            </div>
+            <div class="status-line">
+                <span class="status-label">Thumb:</span>
+                <span id="thumb-display" class="status-value">--</span>
+            </div>
+            <div class="status-line">
+                <span class="status-label">Index:</span>
+                <span id="index-display" class="status-value">--</span>
+            </div>
+            <div class="status-line">
+                <span class="status-label">Middle:</span>
+                <span id="middle-display" class="status-value">--</span>
+            </div>
+            <div class="status-line">
+                <span class="status-label">Ring:</span>
+                <span id="ring-display" class="status-value">--</span>
+            </div>
+            <div class="status-line">
+                <span class="status-label">Pinky:</span>
+                <span id="pinky-display" class="status-value">--</span>
+            </div>
+            <div id="method-display" class="detection-method"></div>
         </div>
 
         <!-- Loading Overlay -->
-        <div id="loading">
+        <div id="loading-overlay">
             <div class="spinner"></div>
             <div id="loading-text">Starting camera...</div>
         </div>
@@ -298,212 +166,388 @@
     <script src="detection.js"></script>
 
     <script>
-        console.log('🎯 SizeKit Debug - Guided Capture Mode');
+        console.log('🎯 SizeKit Debug - ACTUAL NAIL DETECTION MODE');
 
         const video = document.getElementById('video');
-        const guidesCanvas = document.getElementById('guides');
-        const ctx = guidesCanvas.getContext('2d');
-        const captureBtn = document.getElementById('capture-btn');
-        const resultsDiv = document.getElementById('results');
-        const resultsList = document.getElementById('results-list');
-        const retryBtn = document.getElementById('retry-btn');
-        const loading = document.getElementById('loading');
+        const overlay = document.getElementById('overlay');
+        const ctx = overlay.getContext('2d');
+        const loadingOverlay = document.getElementById('loading-overlay');
         const loadingText = document.getElementById('loading-text');
 
-        let stream = null;
+        // Status displays
+        const scaleDisplay = document.getElementById('scale-display');
+        const thumbDisplay = document.getElementById('thumb-display');
+        const indexDisplay = document.getElementById('index-display');
+        const middleDisplay = document.getElementById('middle-display');
+        const ringDisplay = document.getElementById('ring-display');
+        const pinkyDisplay = document.getElementById('pinky-display');
+        const methodDisplay = document.getElementById('method-display');
 
-        // Start camera
+        let stream = null;
+        let detectionRunning = false;
+
+        // Resize canvas to match video
+        function resizeCanvas() {
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+            console.log('🎨 Canvas resized to', overlay.width, 'x', overlay.height);
+        }
+
+        // Auto-start camera on page load
         async function startCamera() {
+            console.log('🔵 Auto-starting camera...');
+            
             try {
-                loadingText.textContent = '📷 Starting camera...';
+                loadingText.textContent = '📷 Requesting camera access...';
+                console.log('📷 Requesting camera access...');
                 
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: "environment" },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    }
-                });
+                // Try exact environment first
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: { exact: "environment" },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                    console.log('✅ Camera started with exact environment');
+                    loadingText.textContent = '✅ Camera started!';
+                } catch (e) {
+                    console.log('⚠️ Exact environment failed, trying fallback...', e);
+                    loadingText.textContent = '⚠️ Trying fallback camera...';
+                    // Fallback without exact
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: "environment",
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                    console.log('✅ Camera started with fallback');
+                    loadingText.textContent = '✅ Camera started!';
+                }
                 
                 video.srcObject = stream;
+                console.log('📹 Stream attached to video element');
                 
                 video.addEventListener('loadedmetadata', async () => {
+                    console.log('📹 Video metadata loaded');
                     resizeCanvas();
-                    drawGuides();
                     
+                    // Update loading message
                     loadingText.textContent = '🤖 Loading AI model...';
+                    console.log('🤖 Loading handpose model...');
                     await SizeKitDetection.loadHandposeModel();
+                    console.log('✅ Model loaded, starting continuous detection...');
                     
-                    loading.classList.add('hidden');
-                    console.log('✅ Ready to capture!');
+                    // Hide loading overlay
+                    loadingOverlay.classList.add('hidden');
+                    console.log('✅ Loading overlay hidden');
+                    
+                    // Start continuous detection
+                    detectContinuously();
                 });
                 
             } catch (error) {
                 console.error('❌ Camera error:', error);
-                loadingText.textContent = `❌ Camera failed: ${error.message}`;
-            }
-        }
-
-        // Resize canvas to match video
-        function resizeCanvas() {
-            guidesCanvas.width = video.videoWidth;
-            guidesCanvas.height = video.videoHeight;
-            guidesCanvas.style.width = '100%';
-            guidesCanvas.style.height = '100%';
-            guidesCanvas.style.position = 'absolute';
-            guidesCanvas.style.top = '0';
-            guidesCanvas.style.left = '0';
-            guidesCanvas.style.pointerEvents = 'none';
-        }
-
-        // Draw positioning guides
-        function drawGuides() {
-            const w = guidesCanvas.width;
-            const h = guidesCanvas.height;
-            
-            ctx.clearRect(0, 0, w, h);
-            
-            // Credit card guide (bottom right, 25% of width)
-            const cardWidth = w * 0.25;
-            const cardHeight = cardWidth / 1.586;
-            const cardX = w * 0.65;
-            const cardY = h * 0.65;
-            
-            ctx.strokeStyle = '#4caf50';
-            ctx.lineWidth = 4;
-            ctx.setLineDash([15, 10]);
-            ctx.strokeRect(cardX, cardY, cardWidth, cardHeight);
-            ctx.setLineDash([]);
-            
-            // Card label
-            ctx.fillStyle = '#4caf50';
-            ctx.font = 'bold 20px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('💳 Credit Card', cardX + cardWidth / 2, cardY - 15);
-            
-            // Hand guide (center-left, larger)
-            const handWidth = w * 0.35;
-            const handHeight = h * 0.45;
-            const handX = w * 0.15;
-            const handY = h * 0.3;
-            
-            ctx.strokeStyle = '#667eea';
-            ctx.lineWidth = 4;
-            ctx.setLineDash([15, 10]);
-            ctx.strokeRect(handX, handY, handWidth, handHeight);
-            ctx.setLineDash([]);
-            
-            // Hand label
-            ctx.fillStyle = '#667eea';
-            ctx.font = 'bold 20px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('✋ Left Hand (Spread Fingers)', handX + handWidth / 2, handY - 15);
-            
-            // Hand icon
-            ctx.font = '80px Arial';
-            ctx.fillStyle = 'rgba(102, 126, 234, 0.3)';
-            ctx.fillText('✋', handX + handWidth / 2 - 30, handY + handHeight / 2 + 30);
-        }
-
-        // Capture and process photo
-        captureBtn.addEventListener('click', async () => {
-            console.log('📸 Capturing photo...');
-            captureBtn.disabled = true;
-            captureBtn.textContent = '⏳ Processing...';
-            
-            try {
-                // Create canvas from video frame
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const captureCtx = canvas.getContext('2d');
-                captureCtx.drawImage(video, 0, 0);
-                
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-                
-                // Detect reference object
-                const reference = await SizeKitDetection.detectReferenceObject({
-                    dataUrl: dataUrl,
-                    width: canvas.width,
-                    height: canvas.height
-                });
-                
-                if (!reference) {
-                    alert('⚠️ Credit card not detected! Please align it with the guide.');
-                    captureBtn.disabled = false;
-                    captureBtn.textContent = '📷 Capture Photo';
-                    return;
-                }
-                
-                // Detect hand and nails
-                const hand = await SizeKitDetection.detectHandAndNails({
-                    dataUrl: dataUrl,
-                    width: canvas.width,
-                    height: canvas.height
-                }, reference);
-                
-                if (!hand || hand.confidence < 0.7) {
-                    alert('⚠️ Hand not detected! Please spread fingers and align with guide.');
-                    captureBtn.disabled = false;
-                    captureBtn.textContent = '📷 Capture Photo';
-                    return;
-                }
-                
-                // Measure nails
-                const measurements = SizeKitDetection.measureNails(hand, reference);
-                
-                // Show results
-                displayResults(measurements, reference);
-                
-            } catch (error) {
-                console.error('❌ Processing error:', error);
-                alert(`❌ Error: ${error.message}`);
-                captureBtn.disabled = false;
-                captureBtn.textContent = '📷 Capture Photo';
-            }
-        });
-
-        // Display results
-        function displayResults(measurements, reference) {
-            resultsList.innerHTML = '';
-            
-            // Add scale info
-            const scaleInfo = document.createElement('div');
-            scaleInfo.style.cssText = 'text-align: center; color: #4caf50; font-size: 18px; margin-bottom: 20px; font-weight: bold;';
-            scaleInfo.textContent = `📏 Scale: ${reference.pixelsPerMm.toFixed(2)} pixels/mm`;
-            resultsList.appendChild(scaleInfo);
-            
-            // Add measurements
-            measurements.forEach(nail => {
-                const item = document.createElement('div');
-                item.className = 'result-item';
-                item.innerHTML = `
-                    <span class="finger-name">${nail.finger}</span>
-                    <div class="measurement">
-                        <div class="mm-value">${nail.mm} mm</div>
-                        <div class="size-value">Size ${nail.size}</div>
-                    </div>
+                loadingText.innerHTML = `
+                    ❌ Camera Failed<br>
+                    <small style="font-size: 16px; font-weight: normal;">
+                    ${error.name}: ${error.message}<br><br>
+                    Check:<br>
+                    • Camera permission allowed?<br>
+                    • On HTTPS?<br>
+                    • Camera not in use by another app?
+                    </small>
                 `;
-                resultsList.appendChild(item);
-            });
+            }
+        }
+
+        // Continuous detection loop
+        async function detectContinuously() {
+            if (detectionRunning) return;
+            detectionRunning = true;
+
+            console.log('🔄 Starting continuous detection loop...');
+
+            async function loop() {
+                try {
+                    // Clear canvas
+                    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+                    // Capture current frame
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const captureCtx = canvas.getContext('2d');
+                    captureCtx.drawImage(video, 0, 0);
+                    const imageData = captureCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+                    // Detect reference object (credit card)
+                    const reference = await SizeKitDetection.detectReferenceObject({
+                        dataUrl: canvas.toDataURL('image/jpeg', 0.8)
+                    });
+
+                    if (reference) {
+                        // Draw credit card box
+                        const box = reference.boundingBox;
+                        ctx.strokeStyle = '#4caf50';
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([10, 5]);
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+                        ctx.setLineDash([]);
+
+                        // Update scale display
+                        scaleDisplay.textContent = `${reference.pixelsPerMm.toFixed(2)} px/mm`;
+
+                        // Detect hand
+                        const model = await SizeKitDetection.loadHandposeModel();
+                        const predictions = await model.estimateHands(canvas);
+
+                        if (predictions.length > 0) {
+                            const hand = predictions[0];
+                            const landmarks = hand.landmarks;
+
+                            // Draw hand bounding box
+                            const xs = landmarks.map(l => l[0]);
+                            const ys = landmarks.map(l => l[1]);
+                            const minX = Math.min(...xs);
+                            const maxX = Math.max(...xs);
+                            const minY = Math.min(...ys);
+                            const maxY = Math.max(...ys);
+
+                            ctx.strokeStyle = '#667eea';
+                            ctx.lineWidth = 3;
+                            ctx.setLineDash([10, 5]);
+                            ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+                            ctx.setLineDash([]);
+
+                            // Draw landmarks
+                            ctx.fillStyle = '#667eea';
+                            landmarks.forEach(point => {
+                                ctx.beginPath();
+                                ctx.arc(point[0], point[1], 4, 0, 2 * Math.PI);
+                                ctx.fill();
+                            });
+
+                            // Fingertips: [4, 8, 12, 16, 20]
+                            const fingerTips = [4, 8, 12, 16, 20];
+                            const fingerEmojis = ['👍', '☝️', '🖕', '💍', '🤙'];
+                            const fingerNames = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+                            const displays = [thumbDisplay, indexDisplay, middleDisplay, ringDisplay, pinkyDisplay];
+
+                            let segmentationCount = 0;
+
+                            fingerTips.forEach((tipIndex, i) => {
+                                const tip = landmarks[tipIndex];
+                                
+                                // Draw emoji at fingertip
+                                ctx.font = '24px Arial';
+                                ctx.fillText(fingerEmojis[i], tip[0] - 12, tip[1] - 15);
+
+                                // Calculate nail width (with ACTUAL detection)
+                                const secondJoint = landmarks[tipIndex - 2];
+                                const nailWidth = calculateNailWidthDirect(
+                                    imageData,
+                                    landmarks,
+                                    tipIndex,
+                                    tip[0],
+                                    tip[1]
+                                );
+
+                                if (nailWidth.method === 'segmentation') {
+                                    segmentationCount++;
+
+                                    // Draw detected nail region (green highlight)
+                                    ctx.fillStyle = 'rgba(76, 175, 80, 0.3)';
+                                    ctx.fillRect(
+                                        tip[0] - nailWidth.pixels / 2,
+                                        tip[1] - 20,
+                                        nailWidth.pixels,
+                                        40
+                                    );
+                                }
+
+                                // Convert to mm
+                                const widthMm = nailWidth.pixels / reference.pixelsPerMm;
+                                const sizeNumber = SizeKitDetection.mmToSizeNumber(widthMm);
+
+                                // Update display
+                                displays[i].textContent = `${widthMm.toFixed(1)}mm (Size ${sizeNumber})`;
+                                displays[i].style.color = nailWidth.method === 'segmentation' ? '#4caf50' : '#ff9800';
+                            });
+
+                            // Update method display
+                            if (segmentationCount === 5) {
+                                methodDisplay.textContent = '✨ All nails detected via ACTUAL SEGMENTATION';
+                                methodDisplay.style.color = '#4caf50';
+                            } else if (segmentationCount > 0) {
+                                methodDisplay.textContent = `⚠️ ${segmentationCount}/5 nails detected, ${5 - segmentationCount} estimated`;
+                                methodDisplay.style.color = '#ff9800';
+                            } else {
+                                methodDisplay.textContent = '⚠️ Using fallback estimation (no nails detected)';
+                                methodDisplay.style.color = '#f44336';
+                            }
+                        }
+                    } else {
+                        scaleDisplay.textContent = '❌ No credit card';
+                        scaleDisplay.style.color = '#f44336';
+                    }
+
+                } catch (error) {
+                    console.error('Detection error:', error);
+                }
+
+                // Run at ~10 FPS (smooth but not too CPU intensive)
+                setTimeout(loop, 100);
+            }
+
+            loop();
+        }
+
+        // Direct nail width calculation (mirrors detection.js but inline for real-time)
+        function calculateNailWidthDirect(imageData, landmarks, tipIndex, fingertipX, fingertipY) {
+            const actualWidth = detectActualNailBoundaryDirect(imageData, landmarks, tipIndex, fingertipX, fingertipY);
             
-            // Show results screen
-            resultsDiv.classList.add('visible');
+            if (actualWidth > 0) {
+                return {
+                    pixels: actualWidth,
+                    method: 'segmentation'
+                };
+            }
+
+            // Fallback
+            const tip = landmarks[tipIndex];
+            const secondJoint = landmarks[tipIndex - 2];
+            const dx = tip[0] - secondJoint[0];
+            const dy = tip[1] - secondJoint[1];
+            const fingerLength = Math.sqrt(dx * dx + dy * dy);
+
+            return {
+                pixels: fingerLength * 0.45,
+                method: 'estimation'
+            };
         }
 
-        // Retry
-        retryBtn.addEventListener('click', () => {
-            resultsDiv.classList.remove('visible');
-            captureBtn.disabled = false;
-            captureBtn.textContent = '📷 Capture Photo';
+        function detectActualNailBoundaryDirect(imageData, landmarks, tipIndex, fingertipX, fingertipY) {
+            const data = imageData.data;
+            const imgWidth = imageData.width;
+
+            const regionSize = 80;
+            const halfSize = regionSize / 2;
+            const startX = Math.max(0, Math.floor(fingertipX - halfSize));
+            const startY = Math.max(0, Math.floor(fingertipY - halfSize));
+            const endX = Math.min(imgWidth, Math.floor(fingertipX + halfSize));
+            const endY = Math.min(imageData.height, Math.floor(fingertipY + halfSize));
+
+            // Sample skin tone
+            const baseJoint = landmarks[tipIndex - 3];
+            const skinTone = getSkinToneDirect(data, imgWidth, baseJoint[0], baseJoint[1]);
+
+            // Find nail pixels
+            const nailPixels = [];
+            const nailThreshold = skinTone.brightness * 1.15;
+
+            for (let y = startY; y < endY; y++) {
+                for (let x = startX; x < endX; x++) {
+                    const idx = (y * imgWidth + x) * 4;
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+                    const brightness = (r + g + b) / 3;
+
+                    if (brightness > nailThreshold) {
+                        const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+                        if (colorVariance < 60) {
+                            nailPixels.push({ x, y });
+                        }
+                    }
+                }
+            }
+
+            if (nailPixels.length < 20) return 0;
+
+            // Find widest span
+            const lines = {};
+            nailPixels.forEach(p => {
+                if (!lines[p.y]) lines[p.y] = [];
+                lines[p.y].push(p.x);
+            });
+
+            let maxWidth = 0;
+            const searchRange = 30;
+
+            Object.keys(lines).forEach(y => {
+                const yNum = parseInt(y);
+                if (Math.abs(yNum - fingertipY) < searchRange) {
+                    const xValues = lines[y];
+                    const minX = Math.min(...xValues);
+                    const maxX = Math.max(...xValues);
+                    const width = maxX - minX;
+
+                    if (width > maxWidth) {
+                        maxWidth = width;
+                    }
+                }
+            });
+
+            return maxWidth;
+        }
+
+        function getSkinToneDirect(data, imgWidth, centerX, centerY) {
+            const samples = 20;
+            const sampleRadius = 10;
+            let sumR = 0, sumG = 0, sumB = 0;
+            let count = 0;
+
+            for (let i = 0; i < samples; i++) {
+                const angle = (i / samples) * 2 * Math.PI;
+                const x = Math.round(centerX + sampleRadius * Math.cos(angle));
+                const y = Math.round(centerY + sampleRadius * Math.sin(angle));
+                const idx = (y * imgWidth + x) * 4;
+
+                if (idx >= 0 && idx < data.length - 3) {
+                    sumR += data[idx];
+                    sumG += data[idx + 1];
+                    sumB += data[idx + 2];
+                    count++;
+                }
+            }
+
+            const avgR = sumR / count;
+            const avgG = sumG / count;
+            const avgB = sumB / count;
+
+            return {
+                r: Math.round(avgR),
+                g: Math.round(avgG),
+                b: Math.round(avgB),
+                brightness: (avgR + avgG + avgB) / 3
+            };
+        }
+
+        // Check if detection.js loaded
+        if (typeof SizeKitDetection === 'undefined') {
+            console.error('❌ SizeKitDetection not loaded - detection.js failed to load');
+            loadingText.innerHTML = `
+                ❌ Failed to load detection.js<br>
+                <small style="font-size: 16px; font-weight: normal;">
+                Refresh the page or check console for errors
+                </small>
+            `;
+        }
+
+        // Start camera automatically when page loads
+        window.addEventListener('load', () => {
+            console.log('🎯 Page loaded, auto-starting camera...');
+            if (typeof SizeKitDetection !== 'undefined') {
+                startCamera();
+            } else {
+                loadingText.textContent = '❌ Script loading failed - check console';
+            }
         });
-
-        // Start on load
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', startCamera);
-        } else {
-            startCamera();
-        }
     </script>
 </body>
 </html>

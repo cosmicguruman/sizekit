@@ -414,8 +414,16 @@ async function detectHandAndNails(photo, referenceData) {
                 // Use first detected hand
                 const hand = predictions[0];
                 
-                // Extract nail locations from keypoints
-                const nails = extractNailLocations(hand, img.width, img.height);
+                // Get image data for actual nail detection
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                
+                // Extract nail locations from keypoints (with actual detection)
+                const nails = extractNailLocations(hand, img.width, img.height, imageData);
                 
                 resolve({
                     detected: true,
@@ -436,7 +444,7 @@ async function detectHandAndNails(photo, referenceData) {
 /**
  * Extract nail locations from hand keypoints
  */
-function extractNailLocations(hand, imageWidth, imageHeight) {
+function extractNailLocations(hand, imageWidth, imageHeight, imageData = null) {
     const landmarks = hand.landmarks;
     
     // MediaPipe hand landmarks indices:
@@ -452,35 +460,176 @@ function extractNailLocations(hand, imageWidth, imageHeight) {
             finger: fingerNames[i],
             tip: { x: tip[0], y: tip[1] },
             base: { x: base[0], y: base[1] },
-            width: calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight)
+            width: calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight, imageData)
         };
     });
 }
 
 /**
- * Calculate nail width from hand landmarks
+ * Calculate nail width from hand landmarks - NEW: ACTUAL NAIL DETECTION
  */
-function calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight) {
-    // Estimate nail width based on finger width at the tip
-    // This is simplified - real implementation would analyze the actual nail region
-    
+function calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight, imageData = null) {
     const tip = landmarks[tipIndex];
     const secondJoint = landmarks[tipIndex - 2];
     
-    // Distance between joints gives us finger thickness estimate
+    // If we have image data, detect actual nail boundary
+    if (imageData) {
+        const actualWidth = detectActualNailBoundary(imageData, tip[0], tip[1], landmarks, tipIndex);
+        if (actualWidth > 0) {
+            console.log(`  ✨ ACTUAL NAIL detected: ${actualWidth.toFixed(1)}px`);
+            return {
+                pixels: actualWidth,
+                location: { x: tip[0], y: tip[1] },
+                method: 'segmentation'
+            };
+        }
+    }
+    
+    // Fallback: estimate based on finger length
     const dx = tip[0] - secondJoint[0];
     const dy = tip[1] - secondJoint[1];
     const fingerLength = Math.sqrt(dx * dx + dy * dy);
-    
-    // Nail width is approximately 0.4-0.5 of finger length
     const estimatedNailWidth = fingerLength * 0.45;
     
-    console.log(`  Finger segment: ${fingerLength.toFixed(1)}px → Nail width: ${estimatedNailWidth.toFixed(1)}px`);
+    console.log(`  ⚠️ ESTIMATED nail width: ${estimatedNailWidth.toFixed(1)}px (fallback)`);
     
     return {
         pixels: estimatedNailWidth,
-        location: { x: tip[0], y: tip[1] }
+        location: { x: tip[0], y: tip[1] },
+        method: 'estimation'
     };
+}
+
+/**
+ * 🔬 ACTUAL NAIL BOUNDARY DETECTION
+ * Segments the nail from skin using brightness and color analysis
+ */
+function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, tipIndex) {
+    const data = imageData.data;
+    const imgWidth = imageData.width;
+    const imgHeight = imageData.height;
+    
+    console.log(`  🔬 Detecting actual nail at (${Math.round(fingertipX)}, ${Math.round(fingertipY)})`);
+    
+    // 1. Extract region around fingertip (80x80px window)
+    const regionSize = 80;
+    const halfSize = regionSize / 2;
+    const startX = Math.max(0, Math.floor(fingertipX - halfSize));
+    const startY = Math.max(0, Math.floor(fingertipY - halfSize));
+    const endX = Math.min(imgWidth, Math.floor(fingertipX + halfSize));
+    const endY = Math.min(imgHeight, Math.floor(fingertipY + halfSize));
+    
+    // 2. Sample skin tone (from finger base area)
+    const baseJoint = landmarks[tipIndex - 3];
+    const skinTone = getSkinTone(data, imgWidth, baseJoint[0], baseJoint[1]);
+    
+    console.log(`  Skin tone: R${skinTone.r} G${skinTone.g} B${skinTone.b}, Brightness: ${skinTone.brightness.toFixed(0)}`);
+    
+    // 3. Find nail pixels (brighter and less saturated than skin)
+    const nailPixels = [];
+    const nailThreshold = skinTone.brightness * 1.15; // Nails are ~15% brighter
+    
+    for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+            const idx = (y * imgWidth + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const brightness = (r + g + b) / 3;
+            
+            // Is this pixel brighter than skin?
+            if (brightness > nailThreshold) {
+                // Also check it's not too colorful (nails are more neutral)
+                const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+                if (colorVariance < 60) { // Less color variance = more nail-like
+                    nailPixels.push({ x, y });
+                }
+            }
+        }
+    }
+    
+    console.log(`  Found ${nailPixels.length} potential nail pixels`);
+    
+    if (nailPixels.length < 20) {
+        console.warn(`  ⚠️ Too few nail pixels detected (${nailPixels.length})`);
+        return 0;
+    }
+    
+    // 4. Find widest horizontal span of nail pixels
+    const width = findWidestHorizontalSpan(nailPixels, fingertipY);
+    
+    console.log(`  📏 Measured actual nail width: ${width.toFixed(1)}px`);
+    
+    return width;
+}
+
+/**
+ * Sample skin tone from a region
+ */
+function getSkinTone(data, imgWidth, centerX, centerY) {
+    const samples = 20;
+    const sampleRadius = 10;
+    let sumR = 0, sumG = 0, sumB = 0;
+    let count = 0;
+    
+    for (let i = 0; i < samples; i++) {
+        const angle = (i / samples) * 2 * Math.PI;
+        const x = Math.round(centerX + sampleRadius * Math.cos(angle));
+        const y = Math.round(centerY + sampleRadius * Math.sin(angle));
+        const idx = (y * imgWidth + x) * 4;
+        
+        if (idx >= 0 && idx < data.length - 3) {
+            sumR += data[idx];
+            sumG += data[idx + 1];
+            sumB += data[idx + 2];
+            count++;
+        }
+    }
+    
+    const avgR = sumR / count;
+    const avgG = sumG / count;
+    const avgB = sumB / count;
+    
+    return {
+        r: Math.round(avgR),
+        g: Math.round(avgG),
+        b: Math.round(avgB),
+        brightness: (avgR + avgG + avgB) / 3
+    };
+}
+
+/**
+ * Find the widest horizontal span of pixels near the fingertip
+ */
+function findWidestHorizontalSpan(pixels, centerY) {
+    if (pixels.length === 0) return 0;
+    
+    // Group pixels by Y coordinate (scan horizontal lines)
+    const lines = {};
+    pixels.forEach(p => {
+        if (!lines[p.y]) lines[p.y] = [];
+        lines[p.y].push(p.x);
+    });
+    
+    // Find widest line (focus on lines near the fingertip)
+    let maxWidth = 0;
+    const searchRange = 30; // Look within 30px of fingertip
+    
+    Object.keys(lines).forEach(y => {
+        const yNum = parseInt(y);
+        if (Math.abs(yNum - centerY) < searchRange) {
+            const xValues = lines[y];
+            const minX = Math.min(...xValues);
+            const maxX = Math.max(...xValues);
+            const width = maxX - minX;
+            
+            if (width > maxWidth) {
+                maxWidth = width;
+            }
+        }
+    });
+    
+    return maxWidth;
 }
 
 // ============================================
