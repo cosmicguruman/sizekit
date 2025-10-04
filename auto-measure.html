@@ -405,8 +405,18 @@
                         if (!reference) {
                             subInstruction.textContent = '⚠️ Keep card in view!';
                             detectionStableCount = 0;
+                            instructionsDiv.className = '';
                             return;
                         }
+
+                        // Update scale continuously
+                        savedScale = reference.pixelsPerMm;
+                        
+                        // Draw card
+                        const box = reference.boundingBox;
+                        ctx.strokeStyle = '#4caf50';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
 
                         const model = await SizeKitDetection.loadHandposeModel();
                         const predictions = await model.estimateHands(canvas);
@@ -426,10 +436,12 @@
                             ctx.lineWidth = 3;
                             ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
 
-                            instructionsDiv.className = 'detecting';
-                            subInstruction.textContent = 'Detecting fingers...';
-                            
                             detectionStableCount++;
+                            
+                            if (detectionStableCount < 15) {
+                                instructionsDiv.className = 'detecting';
+                                subInstruction.textContent = '🤚 Hold still... detecting';
+                            }
 
                             if (detectionStableCount >= 15) {
                                 // Measure 4 fingers
@@ -456,8 +468,8 @@
                                 setTimeout(() => {
                                     currentStep = 3;
                                     stepNumber.textContent = 'Step 3 of 3';
-                                    mainInstruction.textContent = '👍 Show Thumb';
-                                    subInstruction.textContent = 'Final measurement (keep card visible)';
+                                    mainInstruction.textContent = '👍 Show Your Thumb';
+                                    subInstruction.textContent = 'Show hand with thumb clearly visible + card';
                                     instructionsDiv.className = '';
                                     progressFill.style.width = '66%';
                                     progressText.textContent = '66% Complete';
@@ -476,8 +488,18 @@
                         if (!reference) {
                             subInstruction.textContent = '⚠️ Keep card in view!';
                             detectionStableCount = 0;
+                            instructionsDiv.className = '';
                             return;
                         }
+
+                        // Update scale continuously
+                        savedScale = reference.pixelsPerMm;
+                        
+                        // Draw card
+                        const box = reference.boundingBox;
+                        ctx.strokeStyle = '#4caf50';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
 
                         const model = await SizeKitDetection.loadHandposeModel();
                         const predictions = await model.estimateHands(canvas);
@@ -497,10 +519,12 @@
                             ctx.lineWidth = 3;
                             ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
 
-                            instructionsDiv.className = 'detecting';
-                            subInstruction.textContent = 'Detecting thumb...';
-                            
                             detectionStableCount++;
+                            
+                            if (detectionStableCount < 15) {
+                                instructionsDiv.className = 'detecting';
+                                subInstruction.textContent = '👍 Hold still... detecting thumb';
+                            }
 
                             if (detectionStableCount >= 15) {
                                 // Measure thumb
