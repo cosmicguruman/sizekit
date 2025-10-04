@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SizeKit - Debug Measurements</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            font-size: 12px;
+            padding: 10px;
+            line-height: 1.4;
+        }
+        #video {
+            width: 100%;
+            max-height: 40vh;
+            object-fit: contain;
+            border: 2px solid #0f0;
+            margin-bottom: 10px;
+        }
+        .section {
+            background: #111;
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .section-title {
+            color: #ff0;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .good { color: #0f0; }
+        .bad { color: #f00; }
+        .warn { color: #ff0; }
+        .data-line {
+            margin: 3px 0;
+            padding-left: 10px;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div><strong>🔬 SIZEKIT MEASUREMENT DEBUG</strong></div>
+    <video id="video" autoplay playsinline></video>
+    <button id="scan-btn">SCAN NOW</button>
+    
+    <div id="output"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+    <script src="detection.js"></script>
+
+    <script>
+        const video = document.getElementById('video');
+        const scanBtn = document.getElementById('scan-btn');
+        const output = document.getElementById('output');
+
+        let model = null;
+
+        async function init() {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment" }
+            });
+            video.srcObject = stream;
+
+            output.innerHTML = '<div class="warn">⏳ Loading AI model...</div>';
+            model = await handpose.load();
+            output.innerHTML = '<div class="good">✅ Ready! Show card + hand, then tap SCAN</div>';
+        }
+
+        scanBtn.addEventListener('click', async () => {
+            output.innerHTML = '<div class="warn">⏳ Scanning...</div>';
+
+            // Capture frame
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            let html = '';
+
+            // STEP 1: Credit Card
+            html += '<div class="section"><div class="section-title">📏 STEP 1: CREDIT CARD DETECTION</div>';
+            
+            const reference = await SizeKitDetection.detectReferenceObject({ dataUrl });
+            
+            if (!reference) {
+                html += '<div class="bad">❌ NO CARD DETECTED!</div>';
+                html += '<div>- Make sure card is visible</div>';
+                html += '<div>- Card should be bright and flat</div>';
+            } else {
+                const box = reference.boundingBox;
+                html += `<div class="good">✅ Card detected!</div>`;
+                html += `<div class="data-line">Position: (${box.x}, ${box.y})</div>`;
+                html += `<div class="data-line">Size: ${box.width}px × ${box.height}px</div>`;
+                html += `<div class="data-line">Card width in pixels: <strong>${box.width}px</strong></div>`;
+                html += `<div class="data-line">Real card width: <strong>85.6mm</strong></div>`;
+                html += `<div class="data-line">Scale calculation: ${box.width} ÷ 85.6 = <strong class="warn">${reference.pixelsPerMm.toFixed(3)} px/mm</strong></div>`;
+                
+                if (reference.pixelsPerMm < 3 || reference.pixelsPerMm > 15) {
+                    html += `<div class="bad">⚠️ WARNING: Scale seems wrong! Should be 4-10 px/mm</div>`;
+                } else {
+                    html += `<div class="good">✓ Scale looks reasonable</div>`;
+                }
+            }
+            
+            html += '</div>';
+
+            // STEP 2: Hand Detection
+            html += '<div class="section"><div class="section-title">🖐️ STEP 2: HAND DETECTION</div>';
+            
+            const predictions = await model.estimateHands(canvas);
+            
+            if (predictions.length === 0) {
+                html += '<div class="bad">❌ NO HAND DETECTED!</div>';
+            } else {
+                html += '<div class="good">✅ Hand detected!</div>';
+                const hand = predictions[0];
+                html += `<div class="data-line">Confidence: ${(hand.handInViewConfidence * 100).toFixed(1)}%</div>`;
+                html += `<div class="data-line">Landmarks: ${hand.landmarks.length} points</div>`;
+            }
+            
+            html += '</div>';
+
+            // STEP 3: Nail Measurements (if both card and hand detected)
+            if (reference && predictions.length > 0) {
+                const hand = predictions[0];
+                const landmarks = hand.landmarks;
+                
+                html += '<div class="section"><div class="section-title">💅 STEP 3: NAIL MEASUREMENTS</div>';
+                
+                const fingerIndices = [4, 8, 12, 16, 20];
+                const fingerNames = ['👍 Thumb', '☝️ Index', '🖕 Middle', '💍 Ring', '🤙 Pinky'];
+                
+                fingerIndices.forEach((tipIndex, i) => {
+                    const tip = landmarks[tipIndex];
+                    const baseJoint = landmarks[tipIndex - 3];
+                    
+                    html += `<div style="margin: 15px 0; padding: 10px; background: #222; border-left: 3px solid #0f0;">`;
+                    html += `<div style="color: #ff0; font-size: 13px; font-weight: bold; margin-bottom: 8px;">${fingerNames[i]}</div>`;
+                    
+                    // Sample skin tone
+                    const skinTone = getSkinTone(imageData.data, imageData.width, baseJoint[0], baseJoint[1]);
+                    html += `<div class="data-line">Skin RGB: (${skinTone.r}, ${skinTone.g}, ${skinTone.b})</div>`;
+                    html += `<div class="data-line">Skin brightness: ${skinTone.brightness.toFixed(1)}</div>`;
+                    
+                    const nailThreshold = skinTone.brightness * 1.15;
+                    html += `<div class="data-line">Nail threshold (15% brighter): ${nailThreshold.toFixed(1)}</div>`;
+                    
+                    // Detect nail pixels
+                    const regionSize = 80;
+                    const halfSize = regionSize / 2;
+                    const startX = Math.max(0, Math.floor(tip[0] - halfSize));
+                    const startY = Math.max(0, Math.floor(tip[1] - halfSize));
+                    const endX = Math.min(imageData.width, Math.floor(tip[0] + halfSize));
+                    const endY = Math.min(imageData.height, Math.floor(tip[1] + halfSize));
+                    
+                    const data = imageData.data;
+                    const nailPixels = [];
+                    
+                    for (let y = startY; y < endY; y++) {
+                        for (let x = startX; x < endX; x++) {
+                            const idx = (y * imageData.width + x) * 4;
+                            const r = data[idx];
+                            const g = data[idx + 1];
+                            const b = data[idx + 2];
+                            const brightness = (r + g + b) / 3;
+                            
+                            if (brightness > nailThreshold) {
+                                const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+                                if (colorVariance < 60) {
+                                    nailPixels.push({ x, y });
+                                }
+                            }
+                        }
+                    }
+                    
+                    html += `<div class="data-line">Nail pixels found: ${nailPixels.length}</div>`;
+                    
+                    if (nailPixels.length < 20) {
+                        html += `<div class="bad">⚠️ Too few nail pixels - using fallback estimate</div>`;
+                        const secondJoint = landmarks[tipIndex - 2];
+                        const dx = tip[0] - secondJoint[0];
+                        const dy = tip[1] - secondJoint[1];
+                        const fingerLength = Math.sqrt(dx * dx + dy * dy);
+                        const widthPx = fingerLength * 0.45;
+                        html += `<div class="data-line">Finger segment: ${fingerLength.toFixed(1)}px</div>`;
+                        html += `<div class="data-line">Estimated width: ${fingerLength.toFixed(1)} × 0.45 = <strong>${widthPx.toFixed(1)}px</strong></div>`;
+                        
+                        const widthMm = widthPx / reference.pixelsPerMm;
+                        html += `<div class="data-line">Width in mm: ${widthPx.toFixed(1)} ÷ ${reference.pixelsPerMm.toFixed(3)} = <strong class="warn">${widthMm.toFixed(1)}mm</strong></div>`;
+                        
+                        const sizeNumber = SizeKitDetection.mmToSizeNumber(widthMm);
+                        html += `<div class="data-line">Size number: <strong class="warn">Size ${sizeNumber}</strong></div>`;
+                    } else {
+                        html += `<div class="good">✓ Nail detected via segmentation!</div>`;
+                        
+                        // Find widest span
+                        const lines = {};
+                        nailPixels.forEach(p => {
+                            if (!lines[p.y]) lines[p.y] = [];
+                            lines[p.y].push(p.x);
+                        });
+                        
+                        let maxWidth = 0;
+                        const searchRange = 30;
+                        
+                        Object.keys(lines).forEach(y => {
+                            const yNum = parseInt(y);
+                            if (Math.abs(yNum - tip[1]) < searchRange) {
+                                const xValues = lines[y];
+                                const minX = Math.min(...xValues);
+                                const maxX = Math.max(...xValues);
+                                const width = maxX - minX;
+                                if (width > maxWidth) {
+                                    maxWidth = width;
+                                }
+                            }
+                        });
+                        
+                        html += `<div class="data-line">Widest span: <strong>${maxWidth.toFixed(1)}px</strong></div>`;
+                        
+                        const widthMm = maxWidth / reference.pixelsPerMm;
+                        html += `<div class="data-line">Width in mm: ${maxWidth.toFixed(1)} ÷ ${reference.pixelsPerMm.toFixed(3)} = <strong class="warn">${widthMm.toFixed(1)}mm</strong></div>`;
+                        
+                        const sizeNumber = SizeKitDetection.mmToSizeNumber(widthMm);
+                        html += `<div class="data-line">Size number: <strong class="warn">Size ${sizeNumber}</strong></div>`;
+                    }
+                    
+                    html += `</div>`;
+                });
+                
+                html += '</div>';
+            }
+
+            output.innerHTML = html;
+        });
+
+        function getSkinTone(data, imgWidth, centerX, centerY) {
+            const samples = 20;
+            const sampleRadius = 10;
+            let sumR = 0, sumG = 0, sumB = 0;
+            let count = 0;
+
+            for (let i = 0; i < samples; i++) {
+                const angle = (i / samples) * 2 * Math.PI;
+                const x = Math.round(centerX + sampleRadius * Math.cos(angle));
+                const y = Math.round(centerY + sampleRadius * Math.sin(angle));
+                const idx = (y * imgWidth + x) * 4;
+
+                if (idx >= 0 && idx < data.length - 3) {
+                    sumR += data[idx];
+                    sumG += data[idx + 1];
+                    sumB += data[idx + 2];
+                    count++;
+                }
+            }
+
+            const avgR = sumR / count;
+            const avgG = sumG / count;
+            const avgB = sumB / count;
+
+            return {
+                r: Math.round(avgR),
+                g: Math.round(avgG),
+                b: Math.round(avgB),
+                brightness: (avgR + avgG + avgB) / 3
+            };
+        }
+
+        init();
+    </script>
+</body>
+</html>
