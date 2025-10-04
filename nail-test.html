@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nail Detection Test</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #video-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Debug Panel */
+        #debug-panel {
+            background: rgba(0, 0, 0, 0.95);
+            padding: 15px;
+            max-height: 40vh;
+            overflow-y: auto;
+            border-top: 2px solid #4caf50;
+        }
+
+        .debug-line {
+            font-size: 13px;
+            line-height: 1.6;
+            margin: 3px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .finger-section {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+        }
+
+        .finger-name {
+            color: #667eea;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .success {
+            color: #4caf50;
+        }
+
+        .fail {
+            color: #f44336;
+        }
+
+        .warning {
+            color: #ff9800;
+        }
+
+        .info {
+            color: #aaa;
+        }
+
+        /* Status */
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.90);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 10;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        /* Loading */
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #loading-overlay.hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #333;
+            border-top: 4px solid #4caf50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading-text {
+            font-size: 18px;
+            color: #ccc;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <!-- Video Feed -->
+        <div id="video-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="overlay"></canvas>
+            
+            <div id="status">Show credit card + your thumb</div>
+        </div>
+
+        <!-- Debug Panel -->
+        <div id="debug-panel"></div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay">
+            <div class="spinner"></div>
+            <div id="loading-text">Starting camera...</div>
+        </div>
+    </div>
+
+    <!-- TensorFlow.js and MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+    
+    <!-- Detection Logic -->
+    <script src="detection.js"></script>
+
+    <script>
+        console.log('🎯 Nail Detection Debug Mode');
+
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const ctx = overlay.getContext('2d');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        const statusDiv = document.getElementById('status');
+        const debugPanel = document.getElementById('debug-panel');
+
+        let stream = null;
+        let detectionRunning = false;
+
+        function resizeCanvas() {
+            overlay.width = video.videoWidth;
+            overlay.height = video.videoHeight;
+        }
+
+        async function startCamera() {
+            try {
+                loadingText.textContent = '📷 Starting camera...';
+                
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: { exact: "environment" },
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                } catch (e) {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: "environment",
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 }
+                        },
+                        audio: false
+                    });
+                }
+                
+                video.srcObject = stream;
+                
+                video.addEventListener('loadedmetadata', async () => {
+                    resizeCanvas();
+                    
+                    loadingText.textContent = '🤖 Loading AI model...';
+                    await SizeKitDetection.loadHandposeModel();
+                    
+                    loadingOverlay.classList.add('hidden');
+                    detectContinuously();
+                });
+                
+            } catch (error) {
+                console.error('❌ Camera error:', error);
+                loadingText.innerHTML = `❌ Camera Failed<br><small>${error.message}</small>`;
+            }
+        }
+
+        async function detectContinuously() {
+            if (detectionRunning) return;
+            detectionRunning = true;
+
+            async function loop() {
+                try {
+                    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const captureCtx = canvas.getContext('2d');
+                    captureCtx.drawImage(video, 0, 0);
+                    const imageData = captureCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+                    let debugHTML = '';
+
+                    // Step 1: Detect card
+                    const reference = await SizeKitDetection.detectReferenceObject({
+                        dataUrl: canvas.toDataURL('image/jpeg', 0.8)
+                    });
+
+                    if (!reference) {
+                        statusDiv.textContent = '❌ No card detected';
+                        statusDiv.style.color = '#f44336';
+                        debugHTML += '<div class="fail">❌ No credit card detected</div>';
+                    } else {
+                        statusDiv.textContent = `✅ Card: ${reference.pixelsPerMm.toFixed(2)} px/mm`;
+                        statusDiv.style.color = '#4caf50';
+
+                        // Draw card
+                        const box = reference.boundingBox;
+                        ctx.strokeStyle = '#4caf50';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+                        debugHTML += `<div class="success">✅ Card detected: ${reference.pixelsPerMm.toFixed(2)} px/mm</div>`;
+
+                        // Step 2: Detect hand
+                        const model = await SizeKitDetection.loadHandposeModel();
+                        const predictions = await model.estimateHands(canvas);
+
+                        if (predictions.length === 0) {
+                            debugHTML += '<div class="warning">⚠️ No hand detected</div>';
+                        } else {
+                            const hand = predictions[0];
+                            const landmarks = hand.landmarks;
+
+                            // Draw hand box
+                            const xs = landmarks.map(l => l[0]);
+                            const ys = landmarks.map(l => l[1]);
+                            const minX = Math.min(...xs);
+                            const maxX = Math.max(...xs);
+                            const minY = Math.min(...ys);
+                            const maxY = Math.max(...ys);
+
+                            ctx.strokeStyle = '#667eea';
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+
+                            debugHTML += '<div class="success">✅ Hand detected</div>';
+
+                            // Step 3: Test nail detection on THUMB ONLY
+                            const thumbTipIndex = 4;
+                            const tip = landmarks[thumbTipIndex];
+                            const baseJoint = landmarks[thumbTipIndex - 3];
+
+                            debugHTML += '<div class="finger-section">';
+                            debugHTML += '<div class="finger-name">👍 THUMB DEBUG:</div>';
+
+                            // Get skin tone
+                            const skinTone = getSkinTone(imageData.data, imageData.width, baseJoint[0], baseJoint[1]);
+                            debugHTML += `<div class="info">Skin tone: R${skinTone.r} G${skinTone.g} B${skinTone.b}</div>`;
+                            debugHTML += `<div class="info">Skin brightness: ${skinTone.brightness.toFixed(0)}</div>`;
+
+                            // Calculate nail threshold
+                            const nailThreshold = skinTone.brightness * 1.15;
+                            debugHTML += `<div class="info">Nail threshold (15% brighter): ${nailThreshold.toFixed(0)}</div>`;
+
+                            // Scan for nail pixels
+                            const regionSize = 80;
+                            const halfSize = regionSize / 2;
+                            const startX = Math.max(0, Math.floor(tip[0] - halfSize));
+                            const startY = Math.max(0, Math.floor(tip[1] - halfSize));
+                            const endX = Math.min(imageData.width, Math.floor(tip[0] + halfSize));
+                            const endY = Math.min(imageData.height, Math.floor(tip[1] + halfSize));
+
+                            // Draw search region
+                            ctx.strokeStyle = '#ff9800';
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+                            ctx.fillStyle = '#ff9800';
+                            ctx.font = 'bold 16px Arial';
+                            ctx.fillText('Search', startX + 5, startY + 20);
+
+                            const data = imageData.data;
+                            const nailPixels = [];
+                            let brightnessPass = 0;
+                            let colorPass = 0;
+
+                            for (let y = startY; y < endY; y++) {
+                                for (let x = startX; x < endX; x++) {
+                                    const idx = (y * imageData.width + x) * 4;
+                                    const r = data[idx];
+                                    const g = data[idx + 1];
+                                    const b = data[idx + 2];
+                                    const brightness = (r + g + b) / 3;
+
+                                    if (brightness > nailThreshold) {
+                                        brightnessPass++;
+                                        const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+                                        if (colorVariance < 60) {
+                                            colorPass++;
+                                            nailPixels.push({ x, y });
+                                        }
+                                    }
+                                }
+                            }
+
+                            debugHTML += `<div class="info">Pixels brighter than threshold: ${brightnessPass}</div>`;
+                            debugHTML += `<div class="info">Pixels passing color check: ${colorPass}</div>`;
+                            debugHTML += `<div class="info">Final nail pixels: ${nailPixels.length}</div>`;
+
+                            // Draw detected nail pixels
+                            ctx.fillStyle = 'rgba(76, 175, 80, 0.5)';
+                            nailPixels.forEach(p => {
+                                ctx.fillRect(p.x, p.y, 2, 2);
+                            });
+
+                            if (nailPixels.length < 20) {
+                                debugHTML += `<div class="fail">❌ FAILED: Only ${nailPixels.length} nail pixels (need 20+)</div>`;
+                                debugHTML += `<div class="warning">Try: Better lighting, cleaner nail, flatter angle</div>`;
+                            } else {
+                                // Find widest span
+                                const lines = {};
+                                nailPixels.forEach(p => {
+                                    if (!lines[p.y]) lines[p.y] = [];
+                                    lines[p.y].push(p.x);
+                                });
+
+                                let maxWidth = 0;
+                                const searchRange = 30;
+
+                                Object.keys(lines).forEach(y => {
+                                    const yNum = parseInt(y);
+                                    if (Math.abs(yNum - tip[1]) < searchRange) {
+                                        const xValues = lines[y];
+                                        const minX = Math.min(...xValues);
+                                        const maxX = Math.max(...xValues);
+                                        const width = maxX - minX;
+
+                                        if (width > maxWidth) {
+                                            maxWidth = width;
+                                        }
+                                    }
+                                });
+
+                                debugHTML += `<div class="success">✅ Nail width: ${maxWidth.toFixed(1)} pixels</div>`;
+                                
+                                const widthMm = maxWidth / reference.pixelsPerMm;
+                                const sizeNumber = SizeKitDetection.mmToSizeNumber(widthMm);
+                                debugHTML += `<div class="success">✅ ${widthMm.toFixed(1)}mm → Size ${sizeNumber}</div>`;
+
+                                // Draw measurement
+                                ctx.fillStyle = 'rgba(76, 175, 80, 0.4)';
+                                ctx.fillRect(tip[0] - maxWidth / 2, tip[1] - 20, maxWidth, 40);
+                                
+                                ctx.fillStyle = '#4caf50';
+                                ctx.font = 'bold 20px Arial';
+                                ctx.fillText('✓', tip[0] - 10, tip[1] - 25);
+                            }
+
+                            debugHTML += '</div>';
+                        }
+                    }
+
+                    debugPanel.innerHTML = debugHTML;
+
+                } catch (error) {
+                    console.error('Detection error:', error);
+                    debugPanel.innerHTML = `<div class="fail">❌ Error: ${error.message}</div>`;
+                }
+
+                if (detectionRunning) {
+                    setTimeout(loop, 200); // Slower for better debugging
+                }
+            }
+
+            loop();
+        }
+
+        function getSkinTone(data, imgWidth, centerX, centerY) {
+            const samples = 20;
+            const sampleRadius = 10;
+            let sumR = 0, sumG = 0, sumB = 0;
+            let count = 0;
+
+            for (let i = 0; i < samples; i++) {
+                const angle = (i / samples) * 2 * Math.PI;
+                const x = Math.round(centerX + sampleRadius * Math.cos(angle));
+                const y = Math.round(centerY + sampleRadius * Math.sin(angle));
+                const idx = (y * imgWidth + x) * 4;
+
+                if (idx >= 0 && idx < data.length - 3) {
+                    sumR += data[idx];
+                    sumG += data[idx + 1];
+                    sumB += data[idx + 2];
+                    count++;
+                }
+            }
+
+            const avgR = sumR / count;
+            const avgG = sumG / count;
+            const avgB = sumB / count;
+
+            return {
+                r: Math.round(avgR),
+                g: Math.round(avgG),
+                b: Math.round(avgB),
+                brightness: (avgR + avgG + avgB) / 3
+            };
+        }
+
+        if (typeof SizeKitDetection === 'undefined') {
+            console.error('❌ SizeKitDetection not loaded');
+            loadingText.innerHTML = '❌ Failed to load detection.js';
+        }
+
+        window.addEventListener('load', () => {
+            if (typeof SizeKitDetection !== 'undefined') {
+                startCamera();
+            } else {
+                loadingText.textContent = '❌ Script loading failed';
+            }
+        });
+    </script>
+</body>
+</html>
+
