@@ -212,6 +212,7 @@
             justify-content: center;
             align-items: center;
             z-index: 9999;
+            padding: 20px;
         }
         
         .spinner {
@@ -226,6 +227,18 @@
         
         @keyframes spin {
             to { transform: rotate(360deg); }
+        }
+        
+        #skip-ai-btn {
+            margin-top: 30px;
+            padding: 15px 30px;
+            background: #ff9800;
+            color: #000;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
         }
         
         .manual-mode-banner {
@@ -248,6 +261,11 @@
     <div id="loading">
         <div class="spinner"></div>
         <div id="loading-text">Initializing AI models...</div>
+        <button id="skip-ai-btn">⚡ Skip AI - Use Manual Mode</button>
+        <div style="margin-top: 15px; font-size: 12px; color: #999; text-align: center;">
+            AI loading slow? Skip and measure manually<br>
+            (You can click nails to measure)
+        </div>
     </div>
 
     <!-- Camera Screen -->
@@ -304,6 +322,7 @@
         // UI Elements
         const loading = document.getElementById('loading');
         const loadingText = document.getElementById('loading-text');
+        const skipAiBtn = document.getElementById('skip-ai-btn');
         const cameraScreen = document.getElementById('camera-screen');
         const resultsScreen = document.getElementById('results-screen');
         const video = document.getElementById('video');
@@ -324,6 +343,7 @@
         let currentMeasurements = null;
         let manualMode = false;
         let stream = null;
+        let manualOnlyMode = false; // Skip AI entirely
 
         // Size conversion table (mm to size)
         const SIZE_TABLE = [
@@ -348,10 +368,38 @@
             return 0;
         }
 
+        // Skip AI button
+        skipAiBtn.addEventListener('click', async () => {
+            manualOnlyMode = true;
+            loadingText.textContent = 'Starting in manual mode...';
+            
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                video.srcObject = stream;
+                
+                loading.classList.add('hidden');
+                cameraScreen.classList.remove('hidden');
+                manualModeBanner.classList.remove('hidden');
+                manualMode = true;
+            } catch (error) {
+                loadingText.textContent = `❌ Camera error: ${error.message}`;
+            }
+        });
+
         // Initialize
         async function init() {
             try {
-                loadingText.textContent = 'Requesting camera access...';
+                loadingText.textContent = 'Step 1/3: Checking TensorFlow.js...';
+                console.log('TensorFlow available:', typeof tf !== 'undefined');
+                
+                if (typeof tf === 'undefined') {
+                    throw new Error('TensorFlow.js failed to load');
+                }
+                
+                loadingText.textContent = 'Step 2/3: Requesting camera access...';
+                console.log('Requesting camera...');
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'environment',
@@ -360,15 +408,28 @@
                     }
                 });
                 video.srcObject = stream;
+                console.log('Camera stream acquired');
 
-                loadingText.textContent = 'Loading AI models...';
-                handposeModel = await handpose.load();
+                loadingText.textContent = 'Step 3/3: Loading AI models (this may take 30-60 seconds)...';
+                console.log('Loading handpose model...');
+                
+                // Add timeout
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Model loading timeout after 90 seconds')), 90000);
+                });
+                
+                handposeModel = await Promise.race([
+                    handpose.load(),
+                    timeoutPromise
+                ]);
+                
+                console.log('Handpose model loaded successfully');
 
                 loading.classList.add('hidden');
                 cameraScreen.classList.remove('hidden');
             } catch (error) {
-                loadingText.textContent = `❌ Error: ${error.message}`;
-                console.error(error);
+                loadingText.innerHTML = `❌ Error: ${error.message}<br><br>Click "Skip AI" above to use manual mode.`;
+                console.error('Init error:', error);
             }
         }
 
@@ -425,9 +486,6 @@
                 scaleDetails.innerHTML = '<div class="scale-warning">⚠️ Credit card not detected! Measurements may be inaccurate.</div>';
             }
 
-            // Detect hands
-            const predictions = await handposeModel.estimateHands(canvas);
-            
             // Draw on canvas and show
             const displayCanvas = capturedCanvas;
             displayCanvas.width = canvas.width;
@@ -449,9 +507,19 @@
             // Process each hand
             currentMeasurements = { left: [], right: [] };
             
+            // If manual-only mode, skip hand detection
+            if (manualOnlyMode) {
+                leftMeasurements.innerHTML = '<div style="color: #ff9800; padding: 10px;">Manual mode - Click nails on image to measure</div>';
+                rightMeasurements.innerHTML = '<div style="color: #ff9800; padding: 10px;">Manual mode - Click nails on image to measure</div>';
+                return;
+            }
+
+            // Detect hands with AI
+            const predictions = await handposeModel.estimateHands(canvas);
+            
             if (predictions.length === 0) {
-                leftMeasurements.innerHTML = '<div style="color: #f44336; padding: 10px;">No hands detected</div>';
-                rightMeasurements.innerHTML = '<div style="color: #f44336; padding: 10px;">No hands detected</div>';
+                leftMeasurements.innerHTML = '<div style="color: #f44336; padding: 10px;">No hands detected - Use manual mode</div>';
+                rightMeasurements.innerHTML = '<div style="color: #f44336; padding: 10px;">No hands detected - Use manual mode</div>';
                 return;
             }
 
@@ -543,7 +611,20 @@
             resultsScreen.style.display = 'none';
             manualMode = false;
             manualModeBanner.classList.add('hidden');
-            await init();
+            
+            if (manualOnlyMode) {
+                // In manual mode, just restart camera
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' }
+                });
+                video.srcObject = stream;
+                cameraScreen.classList.remove('hidden');
+                manualMode = true;
+                manualModeBanner.classList.remove('hidden');
+            } else {
+                // In AI mode, restart normally
+                await init();
+            }
         });
 
         // Manual adjustment mode
