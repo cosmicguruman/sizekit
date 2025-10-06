@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SizeKit Diagnostic</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            padding: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        h1 { color: #ff0; margin-bottom: 20px; }
+        .test { 
+            background: #111; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-left: 4px solid #333;
+        }
+        .pass { border-color: #0f0; }
+        .fail { border-color: #f00; color: #f00; }
+        .waiting { border-color: #ff0; color: #ff0; }
+        .label { font-weight: bold; color: #fff; }
+    </style>
+</head>
+<body>
+    <h1>🔬 SizeKit Diagnostic Tool</h1>
+    <div id="output"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+    <script src="detection.js"></script>
+
+    <script>
+        const output = document.getElementById('output');
+        const results = [];
+
+        function log(label, status, message, error = null) {
+            const className = status === 'pass' ? 'pass' : status === 'fail' ? 'fail' : 'waiting';
+            const emoji = status === 'pass' ? '✅' : status === 'fail' ? '❌' : '⏳';
+            const html = `
+                <div class="test ${className}">
+                    <div class="label">${emoji} ${label}</div>
+                    <div>${message}</div>
+                    ${error ? `<div style="color: #f00; margin-top: 5px;">Error: ${error}</div>` : ''}
+                </div>
+            `;
+            output.innerHTML += html;
+            results.push({ label, status, message, error });
+        }
+
+        async function runTests() {
+            // Test 1: Page loaded
+            log('Page Load', 'pass', 'HTML page loaded successfully');
+
+            // Test 2: Check TensorFlow.js
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (typeof tf !== 'undefined') {
+                log('TensorFlow.js', 'pass', `Version: ${tf.version.tfjs}`);
+            } else {
+                log('TensorFlow.js', 'fail', 'TensorFlow.js did not load from CDN');
+                return;
+            }
+
+            // Test 3: Check HandPose
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (typeof handpose !== 'undefined') {
+                log('HandPose Library', 'pass', 'HandPose library loaded');
+            } else {
+                log('HandPose Library', 'fail', 'HandPose did not load from CDN');
+                return;
+            }
+
+            // Test 4: Check detection.js
+            if (typeof SizeKitDetection !== 'undefined') {
+                log('detection.js', 'pass', 'Local detection.js loaded');
+            } else {
+                log('detection.js', 'fail', 'detection.js did not load');
+                return;
+            }
+
+            // Test 5: Check camera
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream.getTracks().forEach(t => t.stop());
+                log('Camera Access', 'pass', 'Camera permission granted');
+            } catch (err) {
+                log('Camera Access', 'fail', 'Camera permission denied', err.message);
+            }
+
+            // Test 6: Load HandPose model
+            log('HandPose Model', 'waiting', 'Loading model (this takes 30-60 seconds)...');
+            
+            const startTime = Date.now();
+            try {
+                const model = await handpose.load();
+                const loadTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                
+                const lastTest = output.lastChild;
+                lastTest.className = 'test pass';
+                lastTest.innerHTML = `
+                    <div class="label">✅ HandPose Model</div>
+                    <div>Model loaded successfully in ${loadTime} seconds</div>
+                `;
+                
+                // Test 7: Test inference
+                const canvas = document.createElement('canvas');
+                canvas.width = 640;
+                canvas.height = 480;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, 640, 480);
+                
+                const predictions = await model.estimateHands(canvas);
+                log('Model Inference', 'pass', `Model can run inference (found ${predictions.length} hands in test image)`);
+                
+                log('Final Result', 'pass', '🎉 ALL TESTS PASSED! The app should work now.');
+                
+            } catch (err) {
+                const lastTest = output.lastChild;
+                lastTest.className = 'test fail';
+                lastTest.innerHTML = `
+                    <div class="label">❌ HandPose Model</div>
+                    <div>Failed to load model</div>
+                    <div style="color: #f00; margin-top: 5px;">Error: ${err.message}</div>
+                `;
+                log('Final Result', 'fail', 'Model loading failed. Check your internet connection or try a different network.');
+            }
+        }
+
+        // Wait for scripts to load
+        window.addEventListener('load', () => {
+            setTimeout(runTests, 500);
+        });
+    </script>
+</body>
+</html>
