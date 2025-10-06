@@ -391,11 +391,14 @@
         // Initialize
         async function init() {
             try {
+                // Wait a moment for scripts to fully load
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
                 loadingText.textContent = 'Step 1/3: Checking TensorFlow.js...';
                 console.log('TensorFlow available:', typeof tf !== 'undefined');
                 
                 if (typeof tf === 'undefined') {
-                    throw new Error('TensorFlow.js failed to load');
+                    throw new Error('TensorFlow.js failed to load. Reload the page.');
                 }
                 
                 loadingText.textContent = 'Step 2/3: Requesting camera access...';
@@ -410,20 +413,14 @@
                 video.srcObject = stream;
                 console.log('Camera stream acquired');
 
-                loadingText.textContent = 'Step 3/3: Loading AI models (this may take 30-60 seconds)...';
+                loadingText.textContent = 'Step 3/3: Loading AI models (30-60 seconds, please wait)...';
                 console.log('Loading handpose model...');
                 
-                // Add timeout
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Model loading timeout after 90 seconds')), 90000);
-                });
+                const startTime = Date.now();
+                handposeModel = await handpose.load();
+                const loadTime = ((Date.now() - startTime) / 1000).toFixed(1);
                 
-                handposeModel = await Promise.race([
-                    handpose.load(),
-                    timeoutPromise
-                ]);
-                
-                console.log('Handpose model loaded successfully');
+                console.log(`✅ Handpose model loaded in ${loadTime} seconds`);
 
                 loading.classList.add('hidden');
                 cameraScreen.classList.remove('hidden');
@@ -673,8 +670,14 @@
             }
         });
 
-        // Start
-        init();
+        // Start - wait for all scripts to load
+        if (document.readyState === 'complete') {
+            setTimeout(init, 500);
+        } else {
+            window.addEventListener('load', () => {
+                setTimeout(init, 500);
+            });
+        }
     </script>
 </body>
 </html>
