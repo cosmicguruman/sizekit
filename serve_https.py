@@ -9,6 +9,16 @@ import ssl
 import os
 import sys
 
+class NoCacheHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    """HTTP request handler with no-cache headers"""
+    
+    def end_headers(self):
+        # Add no-cache headers to prevent browser caching
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
 def main():
     port = 8443
     
@@ -19,8 +29,8 @@ def main():
         print("openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes")
         sys.exit(1)
     
-    # Create server
-    handler = http.server.SimpleHTTPRequestHandler
+    # Create server with no-cache handler
+    handler = NoCacheHTTPRequestHandler
     httpd = http.server.HTTPServer(('0.0.0.0', port), handler)
     
     # Wrap with SSL
@@ -28,7 +38,7 @@ def main():
     context.load_cert_chain(certfile='./cert.pem', keyfile='./key.pem')
     httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
     
-    print("✅ HTTPS Server Started!")
+    print("✅ HTTPS Server Started (NO-CACHE MODE)!")
     print(f"\n📱 Access on this computer:")
     print(f"   https://localhost:{port}")
     print(f"\n📱 Access on mobile (same WiFi):")
