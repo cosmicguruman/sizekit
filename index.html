@@ -3,152 +3,465 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#667eea">
-    <meta name="description" content="Mobile camera access for nail scanning - Phase 1">
-    <title>SizeKit - Camera Test</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="icon" type="image/svg+xml" href="icon.svg">
-    <link rel="apple-touch-icon" href="icon.svg">
-    <link rel="manifest" href="manifest.json">
-    
-    <!-- TensorFlow.js and MediaPipe for AI detection -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7"></script>
+    <title>SizeKit - Nail Measurement</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #000;
+            color: #fff;
+            overflow-x: hidden;
+        }
+        
+        /* Loading Screen */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #333;
+            border-top-color: #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #loading-text {
+            text-align: center;
+            color: #999;
+        }
+        
+        /* Camera Screen */
+        #camera-screen {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: none;
+            flex-direction: column;
+        }
+        
+        #video {
+            flex: 1;
+            width: 100%;
+            object-fit: cover;
+        }
+        
+        #capture-btn {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #fff;
+            border: 5px solid #000;
+            box-shadow: 0 0 0 3px #fff;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        
+        #capture-btn:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+        
+        #camera-instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        /* Results Screen */
+        #results-screen {
+            display: none;
+            width: 100vw;
+            min-height: 100vh;
+            padding: 20px;
+            background: #1a1a1a;
+        }
+        
+        h2 {
+            margin-bottom: 15px;
+        }
+        
+        #captured-canvas {
+            width: 100%;
+            max-height: 50vh;
+            object-fit: contain;
+            border: 2px solid #333;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .info-box {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+        
+        .info-box h3 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .scale-good {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .scale-warning {
+            color: #ff9800;
+            font-weight: bold;
+        }
+        
+        .measurements-grid {
+            display: grid;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .finger-measurement {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #333;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+        
+        .finger-name {
+            font-weight: 500;
+        }
+        
+        .measurement-value {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+        
+        .mm-value {
+            color: #4CAF50;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        .size-value {
+            color: #999;
+            font-size: 14px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #666;
+            color: white;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .error-message {
+            background: #f44336;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
-    <!-- Landing Screen -->
-    <div id="landing-screen" class="screen active">
-        <div class="container">
-            <h1>SizeKit</h1>
-            <p class="subtitle">Nail Size Measurement</p>
-            <p class="instruction">Measure your nail sizes in seconds using your phone camera</p>
-            <button id="start-measurement-btn" class="primary-btn">Start Measurement</button>
-        </div>
-    </div>
-
-    <!-- Instructions Screen -->
-    <div id="instructions-screen" class="screen">
-        <div class="container">
-            <h2>What You'll Need</h2>
-            <div class="instruction-card">
-                <p class="step-title">📱 Your phone camera</p>
-                <p class="step-title">✋ Both hands</p>
-                <p class="step-title">💳 A credit card OR 25¢ quarter</p>
-            </div>
-            <div class="instruction-steps">
-                <h3>How it works:</h3>
-                <ol>
-                    <li>Place your LEFT hand flat on a table</li>
-                    <li>Put credit card or quarter next to your hand</li>
-                    <li>Take a photo from above</li>
-                    <li>Repeat for RIGHT hand</li>
-                    <li>Get your nail sizes instantly!</li>
-                </ol>
-            </div>
-            <button id="begin-btn" class="primary-btn">I'm Ready</button>
-            <button id="back-to-home-btn" class="secondary-btn">Back</button>
-        </div>
-    </div>
-
-    <!-- Capture Screen -->
-    <div id="capture-screen" class="screen">
-        <video id="camera-preview-capture" autoplay playsinline></video>
-        <div class="capture-overlay">
-            <div class="guide-box"></div>
-            <div class="instruction-banner">
-                <h3 id="capture-instruction">Place LEFT hand with reference object</h3>
-                <p id="capture-hint">Credit card or quarter next to hand</p>
-            </div>
-        </div>
-        <div class="capture-controls">
-            <button id="capture-photo-btn" class="capture-btn">📸 Capture</button>
-            <button id="cancel-capture-btn" class="secondary-btn">Cancel</button>
-        </div>
-        <div id="capture-loading" class="loading hidden">
-            <div class="spinner"></div>
-            <p>Analyzing photo...</p>
-        </div>
-    </div>
-
-    <!-- Processing Screen -->
-    <div id="processing-screen" class="screen">
-        <div class="container">
-            <h2>Analyzing Your Nails</h2>
-            <div class="processing-animation">
-                <div class="spinner"></div>
-            </div>
-            <p class="processing-status" id="processing-status">Detecting reference object...</p>
-            <div class="progress-steps">
-                <div class="step" id="step-reference">
-                    <span class="step-icon">⏳</span>
-                    <span>Reference Object</span>
-                </div>
-                <div class="step" id="step-hand">
-                    <span class="step-icon">⏳</span>
-                    <span>Hand Detection</span>
-                </div>
-                <div class="step" id="step-nails">
-                    <span class="step-icon">⏳</span>
-                    <span>Nail Measurement</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Results Screen -->
-    <div id="results-screen" class="screen">
-        <div class="container">
-            <h2>Your Nail Sizes</h2>
-            <div class="results-container">
-                <div class="hand-results">
-                    <h3>Left Hand</h3>
-                    <div class="nail-sizes" id="left-hand-sizes">
-                        <!-- Will be populated by JS -->
-                    </div>
-                </div>
-                <div class="hand-results">
-                    <h3>Right Hand</h3>
-                    <div class="nail-sizes" id="right-hand-sizes">
-                        <!-- Will be populated by JS -->
-                    </div>
-                </div>
-            </div>
-            <div class="results-actions">
-                <button id="share-results-btn" class="primary-btn">Share Results</button>
-                <button id="retake-btn" class="secondary-btn">Retake Photos</button>
-            </div>
-        </div>
+    <!-- Loading Screen -->
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading AI models...<br><small style="color: #666;">This may take 30-60 seconds</small></div>
     </div>
 
     <!-- Camera Screen -->
-    <div id="camera-screen" class="screen">
-        <video id="camera-preview" autoplay playsinline></video>
-        <div class="camera-controls">
-            <button id="close-camera-btn" class="secondary-btn">Close Camera</button>
+    <div id="camera-screen">
+        <video id="video" autoplay playsinline></video>
+        <div id="camera-instructions">
+            <strong>📸 Position for capture:</strong><br>
+            1. Place credit card in frame<br>
+            2. Spread fingers next to card<br>
+            3. Ensure good lighting<br>
+            4. Keep hand flat and steady
         </div>
-        <div id="loading-indicator" class="loading">
-            <div class="spinner"></div>
-            <p>Initializing camera...</p>
-        </div>
+        <button id="capture-btn"></button>
     </div>
 
-    <!-- Error Screen -->
-    <div id="error-screen" class="screen">
-        <div class="container">
-            <h2>Camera Access Issue</h2>
-            <p id="error-message" class="error-text"></p>
-            <button id="retry-btn" class="primary-btn">Try Again</button>
-            <button id="back-btn" class="secondary-btn">Go Back</button>
+    <!-- Results Screen -->
+    <div id="results-screen">
+        <h2>Nail Measurements</h2>
+        
+        <canvas id="captured-canvas"></canvas>
+        
+        <div class="info-box" id="scale-info">
+            <h3>📏 Scale Calibration</h3>
+            <div id="scale-details">Processing...</div>
         </div>
+        
+        <div id="error-message" class="error-message hidden"></div>
+        
+        <div class="measurements-grid" id="measurements-grid">
+            <!-- Measurements will be inserted here -->
+        </div>
+        
+        <button class="btn-secondary" id="retake-btn">🔄 Retake Photo</button>
     </div>
 
-    <!-- Legacy detection.js (uses global scope for TensorFlow.js) -->
+    <!-- TensorFlow.js and HandPose -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
     <script src="detection.js"></script>
-    
-    <!-- Modern modular architecture -->
-    <script type="module" src="src/app.js"></script>
+
+    <script>
+        // UI Elements
+        const loading = document.getElementById('loading');
+        const loadingText = document.getElementById('loading-text');
+        const cameraScreen = document.getElementById('camera-screen');
+        const resultsScreen = document.getElementById('results-screen');
+        const video = document.getElementById('video');
+        const captureBtn = document.getElementById('capture-btn');
+        const retakeBtn = document.getElementById('retake-btn');
+        const capturedCanvas = document.getElementById('captured-canvas');
+        const scaleDetails = document.getElementById('scale-details');
+        const measurementsGrid = document.getElementById('measurements-grid');
+        const errorMessage = document.getElementById('error-message');
+
+        // State
+        let stream = null;
+        let currentImageData = null;
+
+        // Initialize
+        async function init() {
+            try {
+                loadingText.innerHTML = 'Step 1/3: Requesting camera...<br><small style="color: #666;">Allow camera access when prompted</small>';
+                
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                });
+                video.srcObject = stream;
+
+                loadingText.innerHTML = 'Step 2/3: Loading TensorFlow.js...<br><small style="color: #666;">Downloading AI library...</small>';
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                loadingText.innerHTML = 'Step 3/3: Loading HandPose model...<br><small style="color: #666;">This takes 30-60 seconds on mobile</small>';
+                
+                await SizeKitDetection.loadHandposeModel();
+
+                loading.classList.add('hidden');
+                cameraScreen.style.display = 'flex';
+                
+            } catch (error) {
+                loadingText.innerHTML = `❌ Error: ${error.message}<br><br><small>Please refresh and try again</small>`;
+                console.error('Init error:', error);
+            }
+        }
+
+        // Capture photo
+        captureBtn.addEventListener('click', async () => {
+            captureBtn.disabled = true;
+            captureBtn.style.opacity = '0.5';
+
+            try {
+                // Capture frame
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+
+                currentImageData = canvas.toDataURL('image/jpeg', 0.95);
+
+                // Stop camera
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+
+                // Analyze
+                await analyzePhoto();
+
+                // Show results
+                cameraScreen.style.display = 'none';
+                resultsScreen.style.display = 'block';
+
+            } catch (error) {
+                console.error('Capture error:', error);
+                errorMessage.textContent = `Error: ${error.message}`;
+                errorMessage.classList.remove('hidden');
+                captureBtn.disabled = false;
+                captureBtn.style.opacity = '1';
+            }
+        });
+
+        // Analyze photo
+        async function analyzePhoto() {
+            try {
+                // Step 1: Detect credit card
+                scaleDetails.textContent = 'Detecting credit card...';
+                
+                const referenceData = await SizeKitDetection.detectReferenceObject({
+                    dataUrl: currentImageData
+                });
+
+                const scale = referenceData.pixelsPerMm;
+                const isGood = scale >= 3 && scale <= 15;
+                
+                scaleDetails.innerHTML = `
+                    Card detected: ${referenceData.boundingBox.width}px × ${referenceData.boundingBox.height}px<br>
+                    <span class="${isGood ? 'scale-good' : 'scale-warning'}">
+                        Scale: ${scale.toFixed(3)} pixels/mm ${isGood ? '✓' : '⚠️'}
+                    </span>
+                `;
+
+                // Step 2: Detect hand and measure nails
+                scaleDetails.innerHTML += '<br><br>Detecting hand and measuring nails...';
+                
+                const handData = await SizeKitDetection.detectHandAndNails(
+                    { dataUrl: currentImageData },
+                    referenceData
+                );
+
+                // Step 3: Measure nails (convert pixels to mm)
+                const measurements = SizeKitDetection.measureNails(handData, referenceData);
+
+                // Display results
+                displayResults(referenceData, handData, measurements);
+
+            } catch (error) {
+                throw new Error(`Detection failed: ${error.message}`);
+            }
+        }
+
+        // Display results
+        function displayResults(referenceData, handData, measurements) {
+            // Draw image with overlays
+            const img = new Image();
+            img.onload = () => {
+                capturedCanvas.width = img.width;
+                capturedCanvas.height = img.height;
+                const ctx = capturedCanvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+
+                // Draw credit card box
+                const box = referenceData.boundingBox;
+                ctx.strokeStyle = '#4CAF50';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(box.x, box.y, box.width, box.height);
+                ctx.fillStyle = '#4CAF50';
+                ctx.font = 'bold 20px Arial';
+                ctx.fillText('CARD', box.x + 10, box.y + 30);
+
+                // Draw hand landmarks
+                ctx.fillStyle = '#2196F3';
+                handData.keypoints.forEach(point => {
+                    ctx.beginPath();
+                    ctx.arc(point[0], point[1], 5, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+
+                // Draw nail boundaries
+                handData.nails.forEach(nail => {
+                    if (nail.width.pixels > 0) {
+                        ctx.strokeStyle = '#ff9800';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.arc(nail.tip.x, nail.tip.y, nail.width.pixels / 2, 0, 2 * Math.PI);
+                        ctx.stroke();
+                    }
+                });
+            };
+            img.src = currentImageData;
+
+            // Display measurements
+            measurementsGrid.innerHTML = measurements.nails.map(nail => `
+                <div class="finger-measurement">
+                    <span class="finger-name">${nail.finger}</span>
+                    <div class="measurement-value">
+                        <span class="mm-value">${nail.widthMm > 0 ? nail.widthMm.toFixed(1) + 'mm' : 'Not detected'}</span>
+                        <span class="size-value">${nail.widthMm > 0 ? 'Size ' + nail.sizeNumber : ''}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            scaleDetails.innerHTML += '<br><br>✅ Measurement complete!';
+            errorMessage.classList.add('hidden');
+        }
+
+        // Retake photo
+        retakeBtn.addEventListener('click', async () => {
+            resultsScreen.style.display = 'none';
+            measurementsGrid.innerHTML = '';
+            errorMessage.classList.add('hidden');
+            
+            // Restart camera
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' }
+            });
+            video.srcObject = stream;
+            cameraScreen.style.display = 'flex';
+            captureBtn.disabled = false;
+            captureBtn.style.opacity = '1';
+        });
+
+        // Start app
+        init();
+    </script>
 </body>
 </html>

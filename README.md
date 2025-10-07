@@ -1,438 +1,213 @@
-# SizeKit - AI Nail Size Measurement
+# 💅 SizeKit - AI-Powered Nail Measurement
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-2.0.0-green.svg)
-![Phase](https://img.shields.io/badge/phase-2%20%7C%20AI%20Measurement-purple.svg)
-![AI](https://img.shields.io/badge/AI-TensorFlow.js%20%7C%20MediaPipe-orange.svg)
+Measure your nails accurately using your phone camera and a credit card for scale reference.
 
-AI-powered nail size measurement web application for press-on nails. Measure all 10 fingernails accurately using just your phone camera and a credit card or quarter.
+---
 
-**🔗 Repository:** https://github.com/cosmicguruman/sizekit
+## 🚀 Quick Start
 
-## 🎯 What This Does
-
-- **AI-Powered Measurement**: Automatically measures all 10 fingernails using computer vision
-- **Dual Reference Support**: Works with credit card OR quarter for scale calibration
-- **Instant Results**: Get nail size numbers (0-11) in seconds
-- **High Accuracy**: ±0.5mm precision using reference object detection
-- **Two-Photo Workflow**: Capture left hand, then right hand with guided overlays
-- **Smart Detection**: TensorFlow.js + MediaPipe for hand pose and nail location
-- **Share Results**: Copy or share measurements directly to nail artist
-- **Mobile-Optimized**: Works on iOS Safari, Chrome mobile, and Android browsers
-
-## ✅ Success Criteria
-
-- ✅ Opens back camera on first tap
-- ✅ Works on iOS Safari (primary target)
-- ✅ Full-screen camera preview
-- ✅ Handles errors gracefully
-- ✅ Can be tested locally via HTTPS
-
-## 📁 File Structure
-
-```
-sizekit/
-├── index.html          # Main page with camera UI
-├── styles.css          # Mobile-first responsive styles
-├── camera.js           # Camera initialization and error handling
-└── README.md           # This file
-```
-
-## 🚀 Local Testing Setup
-
-### Option 1: Using Python HTTPS Server (Recommended for Quick Testing)
-
-#### Step 1: Generate Self-Signed Certificate
-
+### 1. Start the HTTPS server:
 ```bash
-# Generate certificate (valid for 365 days)
-openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
-```
-
-When prompted, you can press Enter for all fields or fill them in.
-
-#### Step 2: Start HTTPS Server
-
-**Python 3:**
-```bash
-python3 -m http.server 8000 --bind 0.0.0.0
-```
-
-Then in another terminal, use a tool like `local-ssl-proxy`:
-```bash
-npm install -g local-ssl-proxy
-local-ssl-proxy --source 8443 --target 8000 --cert cert.pem --key key.pem
-```
-
-Or use Python's built-in SSL support:
-```bash
-# Create a simple server script (serve_https.py)
 python3 serve_https.py
 ```
 
-**serve_https.py:**
-```python
-import http.server
-import ssl
+### 2. Get your computer's IP address:
+```bash
+# Mac/Linux:
+ifconfig | grep "inet " | grep -v 127.0.0.1
 
-httpd = http.server.HTTPServer(('0.0.0.0', 8443), http.server.SimpleHTTPRequestHandler)
-httpd.socket = ssl.wrap_socket(httpd.socket, certfile='./cert.pem', keyfile='./key.pem', server_side=True)
-print("Server running on https://0.0.0.0:8443")
-httpd.serve_forever()
+# Windows:
+ipconfig
 ```
 
-#### Step 3: Access on Desktop
-
+### 3. Open on your iPhone:
 ```
-https://localhost:8443
+https://YOUR_IP:8443
 ```
 
-You'll see a security warning (because of self-signed cert). Click "Advanced" and proceed anyway.
+Example: `https://172.20.10.3:8443`
+
+**Note:** You'll see a security warning (self-signed certificate). Click "Advanced" → "Proceed anyway"
 
 ---
 
-### Option 2: Using ngrok (Best for Mobile Testing)
+## 📱 How to Use
 
-#### Step 1: Install ngrok
-
-Download from [ngrok.com](https://ngrok.com/) or:
-```bash
-brew install ngrok  # macOS
-```
-
-#### Step 2: Start Local Server
-
-```bash
-# In the sizekit directory
-python3 -m http.server 8000
-```
-
-#### Step 3: Expose via ngrok
-
-```bash
-ngrok http 8000
-```
-
-You'll get a URL like:
-```
-https://abc123.ngrok.io
-```
-
-#### Step 4: Open on Mobile
-
-Open the ngrok HTTPS URL on your phone's browser. The camera API will work because ngrok provides HTTPS.
-
-**✨ This is the easiest way to test on a real device!**
+1. **Open the app** - Wait 30-60 seconds for AI models to load
+2. **Position setup:**
+   - Place a credit card in the camera view
+   - Spread your fingers next to the card
+   - Ensure good lighting
+   - Keep your hand flat
+3. **Capture** - Tap the large white button
+4. **View results** - See measurements in millimeters and size numbers
 
 ---
 
-### Option 3: Using localhost.run (No Installation)
+## 🏗️ Architecture
 
-#### Step 1: Start Local Server
-
-```bash
-python3 -m http.server 8000
+### Core Files:
+```
+sizekit/
+├── index.html          # Main app (camera UI + results)
+├── detection.js        # AI detection library
+├── serve_https.py      # HTTPS dev server
+├── cert.pem           # SSL certificate
+├── key.pem            # SSL private key
+└── README.md          # This file
 ```
 
-#### Step 2: Create Tunnel
-
-```bash
-ssh -R 80:localhost:8000 localhost.run
-```
-
-You'll get a URL like:
-```
-https://abc123.lhr.run
-```
-
-#### Step 3: Open on Mobile
-
-Use the provided HTTPS URL on your phone.
+### Tech Stack:
+- **Frontend:** Plain HTML/CSS/JavaScript
+- **AI:** TensorFlow.js + HandPose (MediaPipe)
+- **Detection:** Custom nail segmentation algorithm
+- **Server:** Python HTTPS server (dev only)
 
 ---
 
-### Option 4: Using mkcert (Best for Local Development)
+## 🔬 How It Works
 
-#### Step 1: Install mkcert
+### 1. Credit Card Detection
+- Scans image for bright, rectangular regions
+- Checks aspect ratio (85.6mm × 53.98mm = 1.586)
+- Calculates scale: `pixelsPerMm = cardWidth / 85.6`
 
-```bash
-brew install mkcert  # macOS
-brew install nss     # Firefox support
-```
+### 2. Hand Detection
+- TensorFlow HandPose finds 21 hand landmarks
+- Identifies fingertips [thumb, index, middle, ring, pinky]
 
-#### Step 2: Create Local CA
+### 3. Nail Measurement
+For each fingertip:
+1. Sample skin tone at finger base
+2. Find pixels brighter than skin (nails are ~15% brighter)
+3. Filter by color uniformity (nails are less saturated)
+4. Measure widest horizontal span
+5. Convert: `millimeters = pixels ÷ pixelsPerMm`
 
-```bash
-mkcert -install
-```
+### 4. Size Conversion
+- Maps millimeters to standard nail size numbers (0-9)
+- Uses configurable size table
 
-#### Step 3: Generate Certificate
+---
 
-```bash
-# In your project directory
-mkcert localhost 127.0.0.1 ::1
-```
+## 📊 API Reference
 
-This creates:
-- `localhost+2.pem` (certificate)
-- `localhost+2-key.pem` (key)
-
-#### Step 4: Start Server with Certificate
-
-Create a simple Node.js server (`server.js`):
+The `detection.js` library exports:
 
 ```javascript
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
-const express = require('express');
-
-const app = express();
-app.use(express.static('.'));
-
-const options = {
-  key: fs.readFileSync('localhost+2-key.pem'),
-  cert: fs.readFileSync('localhost+2.pem')
-};
-
-https.createServer(options, app).listen(8443, () => {
-  console.log('Server running on https://localhost:8443');
-});
+window.SizeKitDetection = {
+    // Load AI models
+    loadHandposeModel(),
+    
+    // Detect credit card for scale
+    detectReferenceObject({ dataUrl }),
+    
+    // Detect hand and nail boundaries
+    detectHandAndNails({ dataUrl }, referenceData),
+    
+    // Convert pixels to millimeters
+    measureNails(handData, referenceData),
+    
+    // Convert mm to size numbers
+    mmToSizeNumber(mm),
+    sizeNumberToMm(sizeNumber)
+}
 ```
-
-Install dependencies and run:
-```bash
-npm install express
-node server.js
-```
-
-#### Step 5: Find Your Local IP
-
-```bash
-ifconfig | grep "inet " | grep -v 127.0.0.1
-```
-
-Your local IP will be something like `192.168.1.100`
-
-#### Step 6: Test on Mobile
-
-On your phone (connected to same WiFi):
-```
-https://192.168.1.100:8443
-```
-
-You'll need to accept the certificate warning on first visit.
 
 ---
 
-## 📱 Testing on Mobile Devices
+## 🛠️ Development
 
-### iOS Safari Testing
+### Generate SSL Certificate (if needed):
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+```
 
-1. Connect your iPhone to the same WiFi network as your computer
-2. Open Safari on iPhone
-3. Navigate to your HTTPS URL (from ngrok, localhost.run, or local IP)
-4. Accept any certificate warnings
-5. Tap "Open Camera"
-6. Grant camera permission when prompted
-7. **Verify the back camera opens** (point at something and check if it's the rear camera view)
+### Test Locally:
+```bash
+# Start server
+python3 serve_https.py
 
-### iOS Chrome Testing
+# Open in browser
+open https://localhost:8443
+```
 
-Same steps as Safari, but use Chrome browser.
+---
 
-### Android Testing
+## 🎯 Accuracy Tips
 
-1. Connect Android device to same WiFi
-2. Open Chrome or Firefox
-3. Navigate to HTTPS URL
-4. Accept certificate warnings
-5. Tap "Open Camera"
-6. Grant permissions
-7. Verify back camera opens
+For best measurement accuracy:
+
+1. **Lighting:** Use bright, even lighting (no harsh shadows)
+2. **Card position:** Keep credit card flat and parallel to camera
+3. **Hand position:** Spread fingers, keep hand flat
+4. **Camera angle:** Hold phone directly above (perpendicular to hand)
+5. **Stability:** Keep camera steady while capturing
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Camera Doesn't Open
+### Camera won't open
+- Make sure you're using HTTPS (not HTTP)
+- Allow camera permissions when prompted
+- Check Settings → Safari → Camera = "Ask"
 
-**Issue:** "Camera access must be done over HTTPS"
-- **Solution:** Ensure you're using `https://` not `http://`
+### AI models won't load
+- Wait 30-60 seconds (first load is slow)
+- Check internet connection
+- Try refreshing the page
 
-**Issue:** "NotAllowedError" or permission denied
-- **Solution:** Grant camera permissions in browser settings
-- iOS: Settings → Safari → Camera
-- Android: Browser Settings → Site Settings → Camera
+### Measurements are inaccurate
+- Ensure credit card is detected (look for green box)
+- Check scale value (should be 4-10 px/mm)
+- Improve lighting
+- Position card flat and visible
 
-**Issue:** Front camera opens instead of back camera
-- **Solution:** This is rare but can happen on some devices. The code includes fallback logic.
-- Check browser console for logs
-
-**Issue:** "Camera is already in use"
-- **Solution:** Close other apps using the camera
-- On iOS: Force close camera app
-- Try restarting the browser
-
-### Network Issues
-
-**Issue:** Can't access via local IP on mobile
-- **Solution:** Ensure both devices are on same WiFi network
-- Check firewall settings on your computer
-- Try using ngrok instead
-
-**Issue:** Certificate warnings won't let me proceed
-- **Solution:** On iOS Safari, tap "Show Details" → "Visit this website"
-- On Chrome, type "thisisunsafe" while on the warning page
-
-### Browser Console Errors
-
-Open browser DevTools (on desktop) or remote debugging:
-- **iOS Safari:** Connect iPhone to Mac → Safari → Develop → [Your iPhone] → [Page]
-- **Android Chrome:** chrome://inspect on desktop Chrome
-
-Common console errors:
-- `getUserMedia is not defined`: Browser doesn't support camera API (very old browser)
-- `HTTPS required`: Not using HTTPS
-- `NotFoundError`: No camera on device
+### "No hand detected"
+- Ensure hand is in frame
+- Use better lighting
+- Spread fingers clearly
+- Keep hand steady
 
 ---
 
-## 📊 Testing Checklist
+## 📈 Known Limitations
 
-Before moving to Phase 2, verify:
-
-- [ ] Can access via HTTPS locally
-- [ ] Link opens in mobile browser
-- [ ] No console errors on page load
-- [ ] Button tap triggers camera permission request
-- [ ] **Back camera opens (not front camera)**
-- [ ] Camera preview displays full screen
-- [ ] Video stream is smooth (not laggy)
-- [ ] Can close camera gracefully
-- [ ] Works on iPhone Safari
-- [ ] Works on iPhone Chrome (if available)
-- [ ] Works on Android Chrome
-- [ ] Handles permission denial gracefully
-- [ ] Falls back if back camera unavailable
-- [ ] Works after denying then re-enabling permissions
-- [ ] Works after phone lock/unlock
-- [ ] Works after switching between apps
+1. **Curvature:** Measures 2D projection, doesn't account for nail curvature
+2. **Lighting sensitivity:** Poor lighting affects detection accuracy
+3. **Nail polish:** Dark polish can interfere with detection
+4. **Card detection:** Can sometimes detect wrong rectangles (walls, paper)
+5. **Mobile performance:** AI processing is slower on phones
 
 ---
 
-## 🔧 Technical Details
+## 🚀 Deployment
 
-### Camera Constraints
-
-The app uses MediaDevices API with specific constraints:
-
-```javascript
-// Primary attempt - force back camera
-{
-  video: {
-    facingMode: { exact: "environment" },
-    width: { ideal: 1920 },
-    height: { ideal: 1080 }
-  },
-  audio: false
-}
-
-// Fallback - try back camera but allow front camera
-{
-  video: {
-    facingMode: "environment",
-    width: { ideal: 1920 },
-    height: { ideal: 1080 }
-  },
-  audio: false
-}
+### Option A: Static Hosting
+Deploy to Vercel, Netlify, or GitHub Pages:
+```bash
+# Just upload index.html and detection.js
+# HTTPS is included for free
 ```
 
-### Browser Support
-
-**Tested on:**
-- iOS Safari 15+
-- iOS Chrome 100+
-- Android Chrome 90+
-- Android Firefox 90+
-
-**Requirements:**
-- HTTPS connection
-- Modern browser with MediaDevices API support
-- User gesture to initiate camera (button tap)
-
-### Key iOS Safari Considerations
-
-1. **HTTPS Required:** Camera won't work over HTTP even on localhost
-2. **User Gesture Required:** Camera must be triggered by user interaction (button tap)
-3. **Permission Handling:** iOS prompts once per domain, user must manually re-enable in settings if denied
-4. **Fullscreen Behavior:** Uses viewport units (vh/vw) to handle iOS Safari's unique viewport
+### Option B: Native App
+Wrap with Capacitor or Cordova for iOS/Android app stores
 
 ---
 
-## 🎯 Success Metrics
+## 📝 License
 
-**Phase 1 is complete when:**
-- ✅ Developer can open link on iPhone
-- ✅ Back camera opens on first tap
-- ✅ Works 10/10 times with no failures
-- ✅ Video preview is smooth and full-screen
-- ✅ Tested on at least 2 different devices
+See LICENSE file for details.
 
 ---
 
-## 🚦 Next Steps (Future Phases)
+## 🔗 Resources
 
-Phase 1 focuses ONLY on reliable camera access. Future phases will add:
-
-- **Phase 2:** Capture button and photo capture
-- **Phase 3:** Image processing and nail measurement
-- **Phase 4:** Customer data input
-- **Phase 5:** Artist dashboard integration
+- [TensorFlow.js](https://www.tensorflow.org/js)
+- [HandPose Model](https://github.com/tensorflow/tfjs-models/tree/master/handpose)
+- [MediaPipe Hands](https://google.github.io/mediapipe/solutions/hands)
 
 ---
 
-## 📝 Development Notes
-
-### File Sizes
-- `index.html`: ~1.5 KB
-- `styles.css`: ~5 KB
-- `camera.js`: ~10 KB
-- **Total:** ~16.5 KB (extremely lightweight)
-
-### No Dependencies
-- Pure vanilla JavaScript (no frameworks)
-- No external libraries
-- No build process needed
-- Just open `index.html` and go!
-
-### Performance
-- Minimal JavaScript bundle
-- CSS uses hardware-accelerated properties
-- Video stream uses native browser APIs
-- Works smoothly even on older devices
-
----
-
-## 🤝 Support
-
-If you encounter issues:
-
-1. Check the browser console for errors
-2. Verify HTTPS is enabled
-3. Ensure camera permissions are granted
-4. Try on a different device/browser
-5. Check the troubleshooting section above
-
----
-
-## 📄 License
-
-Part of the SizeKit project for 4TRACK application.
-
----
-
-**Version:** 1.0  
-**Last Updated:** September 29, 2025  
-**Status:** Phase 1 - Camera Access Only
+**Made with ❤️ for nail artists and enthusiasts**
