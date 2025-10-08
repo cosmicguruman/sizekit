@@ -336,6 +336,11 @@
             pinky: false,
             thumb: false
         };
+        
+        // Card detection stabilization
+        let lockedCard = null; // Once we find a good card, lock it
+        let cardCandidates = []; // History of recent card detections
+        const maxCardHistory = 5;
 
         // === Initialize ===
         async function init() {
@@ -394,15 +399,75 @@
                 ctx.drawImage(video, 0, 0);
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
 
-                // Detect credit card
+                // Detect credit card (with stabilization)
                 let cardDetected = false;
                 let referenceData = null;
-                try {
-                    referenceData = await SizeKitDetection.detectReferenceObject({ dataUrl });
+                
+                if (lockedCard) {
+                    // Use locked card
+                    referenceData = lockedCard;
                     cardDetected = true;
                     currentDetection.card = true;
-                } catch (e) {
-                    currentDetection.card = false;
+                } else {
+                    // Try to detect card
+                    try {
+                        const detectedCard = await SizeKitDetection.detectReferenceObject({ dataUrl });
+                        
+                        // Add to history
+                        cardCandidates.push(detectedCard);
+                        if (cardCandidates.length > maxCardHistory) {
+                            cardCandidates.shift();
+                        }
+                        
+                        // Check if we have consistent detections
+                        if (cardCandidates.length >= 3) {
+                            // Average the card positions for stability
+                            const avgX = cardCandidates.reduce((sum, c) => sum + c.boundingBox.x, 0) / cardCandidates.length;
+                            const avgY = cardCandidates.reduce((sum, c) => sum + c.boundingBox.y, 0) / cardCandidates.length;
+                            const avgW = cardCandidates.reduce((sum, c) => sum + c.boundingBox.width, 0) / cardCandidates.length;
+                            const avgH = cardCandidates.reduce((sum, c) => sum + c.boundingBox.height, 0) / cardCandidates.length;
+                            const avgScale = cardCandidates.reduce((sum, c) => sum + c.pixelsPerMm, 0) / cardCandidates.length;
+                            
+                            // Check consistency (all detections within 20% of each other)
+                            const scaleVariance = Math.max(...cardCandidates.map(c => c.pixelsPerMm)) / Math.min(...cardCandidates.map(c => c.pixelsPerMm));
+                            
+                            if (scaleVariance < 1.2) {
+                                // Consistent! Lock the card
+                                lockedCard = {
+                                    boundingBox: {
+                                        x: Math.round(avgX),
+                                        y: Math.round(avgY),
+                                        width: Math.round(avgW),
+                                        height: Math.round(avgH)
+                                    },
+                                    pixelsPerMm: avgScale,
+                                    objectType: 'creditCard'
+                                };
+                                console.log('🔒 CARD LOCKED! Scale:', avgScale.toFixed(2), 'px/mm');
+                            }
+                            
+                            // Use averaged card for now
+                            referenceData = {
+                                boundingBox: {
+                                    x: Math.round(avgX),
+                                    y: Math.round(avgY),
+                                    width: Math.round(avgW),
+                                    height: Math.round(avgH)
+                                },
+                                pixelsPerMm: avgScale,
+                                objectType: 'creditCard'
+                            };
+                        } else {
+                            // Use current detection
+                            referenceData = detectedCard;
+                        }
+                        
+                        cardDetected = true;
+                        currentDetection.card = true;
+                    } catch (e) {
+                        currentDetection.card = false;
+                        cardCandidates = []; // Reset history if detection fails
+                    }
                 }
 
                 // Detect hand and nails

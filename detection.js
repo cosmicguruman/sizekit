@@ -98,8 +98,8 @@ async function detectReferenceObject(photo) {
 }
 
 /**
- * Detect credit card - SIMPLIFIED TO THE MAX
- * Just scan for bright rectangles and pick the best one
+ * Detect credit card - WITH STRICT FILTERING
+ * Only accept bright, uniform rectangles with correct aspect ratio
  */
 async function detectCreditCard(canvas, ctx) {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -110,55 +110,80 @@ async function detectCreditCard(canvas, ctx) {
     console.log(`📐 Scanning ${width}x${height}px image for credit card...`);
     
     const targetAspect = 1.586;
-    const minCardWidth = width * 0.15;  // Card must be at least 15% of image
-    const maxCardWidth = width * 0.50;  // Card must be at most 50% of image
+    const minCardWidth = width * 0.18;  // Card must be 18-45% of image (stricter)
+    const maxCardWidth = width * 0.45;
     
-    let bestRect = null;
-    let bestScore = 0;
+    const candidates = [];
     
     // Scan image in a grid pattern
-    const step = 30;
+    const step = 35; // Coarser grid for speed
     for (let y = 0; y < height - 100; y += step) {
         for (let x = 0; x < width - 100; x += step) {
             // Try different rectangle sizes
-            for (let w = minCardWidth; w <= maxCardWidth; w += 50) {
+            for (let w = minCardWidth; w <= maxCardWidth; w += 60) {
                 const h = w / targetAspect;
                 
                 if (x + w > width || y + h > height) continue;
                 
-                // Check if this region looks like a card (bright, uniform)
+                // STRICT FILTERS: Must pass all checks
                 const brightness = getRegionBrightness(data, x, y, w, h, width);
                 const uniformity = getRegionUniformity(data, x, y, w, h, width);
                 
-                const score = brightness * uniformity * (w / width); // Prefer larger cards
+                // Credit card MUST be bright (>120) and uniform (>0.85)
+                if (brightness < 120) continue;
+                if (uniformity < 0.85) continue;
                 
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestRect = { x: Math.floor(x), y: Math.floor(y), width: Math.floor(w), height: Math.floor(h) };
-                }
+                // Check aspect ratio is close to credit card
+                const aspectRatio = w / h;
+                const aspectError = Math.abs(aspectRatio - targetAspect) / targetAspect;
+                if (aspectError > 0.15) continue; // Must be within 15% of correct ratio
+                
+                // Score based on size and quality
+                const sizeScore = w / width; // Prefer larger cards
+                const qualityScore = (brightness / 255) * uniformity;
+                const score = sizeScore * qualityScore * 100;
+                
+                candidates.push({
+                    x: Math.floor(x),
+                    y: Math.floor(y),
+                    width: Math.floor(w),
+                    height: Math.floor(h),
+                    brightness,
+                    uniformity,
+                    score
+                });
             }
         }
     }
     
-    if (bestRect) {
-        const pixelsPerMm = bestRect.width / 85.6;
-        
-        console.log(`✅ Credit card detected!`);
-        console.log(`   Position: (${bestRect.x}, ${bestRect.y})`);
-        console.log(`   Size: ${bestRect.width}x${bestRect.height}px`);
-        console.log(`   Scale: ${pixelsPerMm.toFixed(2)} pixels/mm`);
-        
-        return {
-            type: 'creditCard',
-            pixelsPerMm: pixelsPerMm,
-            confidence: Math.min(bestScore * 10, 0.95),
-            boundingBox: bestRect,
-            referenceSizeMm: 85.6
-        };
+    console.log(`   Found ${candidates.length} potential cards`);
+    
+    if (candidates.length === 0) {
+        return null;
     }
     
-    console.warn('⚠️ No credit card found');
-    return null;
+    // Sort by score and take best
+    candidates.sort((a, b) => b.score - a.score);
+    const bestRect = candidates[0];
+    
+    const pixelsPerMm = bestRect.width / 85.6;
+    
+    console.log(`✅ Card: (${bestRect.x}, ${bestRect.y}) ${bestRect.width}×${bestRect.height}px`);
+    console.log(`   Brightness: ${bestRect.brightness.toFixed(0)}, Uniformity: ${bestRect.uniformity.toFixed(2)}`);
+    console.log(`   Scale: ${pixelsPerMm.toFixed(2)} px/mm`);
+    
+    return {
+        type: 'creditCard',
+        pixelsPerMm: pixelsPerMm,
+        confidence: Math.min(bestRect.score / 100, 0.95),
+        boundingBox: {
+            x: bestRect.x,
+            y: bestRect.y,
+            width: bestRect.width,
+            height: bestRect.height
+        },
+        referenceSizeMm: 85.6
+    };
 }
 
 // Helper: Get average brightness of a region
