@@ -454,9 +454,10 @@ function detectEdges(imageData) {
  * Detect hand and nails in image
  * @param {Object} photo - Photo object with dataUrl
  * @param {Object} referenceData - Reference object detection result
+ * @param {Array} fingersToDetect - Optional array of finger names to detect (e.g., ['Index', 'Middle', 'Ring', 'Pinky'])
  * @returns {Object} Hand detection with nail locations
  */
-async function detectHandAndNails(photo, referenceData) {
+async function detectHandAndNails(photo, referenceData, fingersToDetect = null) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = async () => {
@@ -484,7 +485,7 @@ async function detectHandAndNails(photo, referenceData) {
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 
                 // Extract nail locations from keypoints (with actual detection)
-                const nails = extractNailLocations(hand, img.width, img.height, imageData);
+                const nails = extractNailLocations(hand, img.width, img.height, imageData, fingersToDetect);
                 
                 resolve({
                     detected: true,
@@ -504,21 +505,37 @@ async function detectHandAndNails(photo, referenceData) {
 
 /**
  * Extract nail locations from hand keypoints
+ * @param {Array} fingersToDetect - Optional: only detect specific fingers (e.g., ['Index', 'Middle', 'Ring', 'Pinky'])
  */
-function extractNailLocations(hand, imageWidth, imageHeight, imageData = null) {
+function extractNailLocations(hand, imageWidth, imageHeight, imageData = null, fingersToDetect = null) {
     const landmarks = hand.landmarks;
     
     // MediaPipe hand landmarks indices:
     // 4: thumb tip, 8: index tip, 12: middle tip, 16: ring tip, 20: pinky tip
-    const fingerTips = [4, 8, 12, 16, 20];
-    const fingerNames = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+    const allFingers = [
+        { name: 'Thumb', tipIndex: 4 },
+        { name: 'Index', tipIndex: 8 },
+        { name: 'Middle', tipIndex: 12 },
+        { name: 'Ring', tipIndex: 16 },
+        { name: 'Pinky', tipIndex: 20 }
+    ];
     
-    return fingerTips.map((tipIndex, i) => {
+    // Filter to only requested fingers if specified
+    const fingersToProcess = fingersToDetect 
+        ? allFingers.filter(f => fingersToDetect.includes(f.name))
+        : allFingers;
+    
+    console.log(`🖐️ Detecting fingers: ${fingersToProcess.map(f => f.name).join(', ')}`);
+    
+    return fingersToProcess.map(finger => {
+        const tipIndex = finger.tipIndex;
         const tip = landmarks[tipIndex];
         const base = landmarks[tipIndex - 3]; // Approximate base of nail
         
+        console.log(`\n👉 ${finger.name}:`);
+        
         return {
-            finger: fingerNames[i],
+            finger: finger.name,
             tip: { x: tip[0], y: tip[1] },
             base: { x: base[0], y: base[1] },
             width: calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight, imageData)

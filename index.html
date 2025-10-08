@@ -475,7 +475,12 @@
                 let handData = null;
                 if (cardDetected) {
                     try {
-                        handData = await SizeKitDetection.detectHandAndNails({ dataUrl }, referenceData);
+                        // Only detect fingers relevant to current step
+                        const fingersToDetect = currentStep === 1 
+                            ? ['Index', 'Middle', 'Ring', 'Pinky']  // Step 1: 4 fingers
+                            : ['Thumb'];  // Step 2: thumb only
+                        
+                        handData = await SizeKitDetection.detectHandAndNails({ dataUrl }, referenceData, fingersToDetect);
                         
                         // Check which nails were detected
                         handData.nails.forEach(nail => {
@@ -485,6 +490,7 @@
                         });
                     } catch (e) {
                         // No hand detected
+                        console.error('Hand detection failed:', e.message);
                     }
                 }
 
@@ -651,8 +657,12 @@
                 const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
 
                 // Detect and measure
+                const fingersToDetect = currentStep === 1 
+                    ? ['Index', 'Middle', 'Ring', 'Pinky']  // Step 1: 4 fingers
+                    : ['Thumb'];  // Step 2: thumb only
+                
                 const referenceData = await SizeKitDetection.detectReferenceObject({ dataUrl });
-                const handData = await SizeKitDetection.detectHandAndNails({ dataUrl }, referenceData);
+                const handData = await SizeKitDetection.detectHandAndNails({ dataUrl }, referenceData, fingersToDetect);
                 const nailMeasurements = SizeKitDetection.measureNails(handData, referenceData);
 
                 // Store measurements
