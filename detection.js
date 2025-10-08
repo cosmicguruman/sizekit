@@ -22,21 +22,22 @@ const REFERENCE_OBJECTS = {
     }
 };
 
-// Size number conversion table (mm to size)
+// Tomica size chart: Size 0 = 17mm, down to Size 9 = 8mm (1mm steps)
 const NAIL_SIZE_TABLE = [
-    { size: 0, minMm: 16.0, maxMm: 18.0 },
-    { size: 1, minMm: 15.0, maxMm: 16.0 },
-    { size: 2, minMm: 14.0, maxMm: 15.0 },
-    { size: 3, minMm: 13.0, maxMm: 14.0 },
-    { size: 4, minMm: 12.0, maxMm: 13.0 },
-    { size: 5, minMm: 11.0, maxMm: 12.0 },
-    { size: 6, minMm: 10.0, maxMm: 11.0 },
-    { size: 7, minMm: 9.0, maxMm: 10.0 },
-    { size: 8, minMm: 8.0, maxMm: 9.0 },
-    { size: 9, minMm: 7.0, maxMm: 8.0 },
-    { size: 10, minMm: 6.0, maxMm: 7.0 },
-    { size: 11, minMm: 5.0, maxMm: 6.0 }
+    { size: 0, mm: 17 },
+    { size: 1, mm: 16 },
+    { size: 2, mm: 15 },
+    { size: 3, mm: 14 },
+    { size: 4, mm: 13 },
+    { size: 5, mm: 12 },
+    { size: 6, mm: 11 },
+    { size: 7, mm: 10 },
+    { size: 8, mm: 9 },
+    { size: 9, mm: 8 }
 ];
+
+// Curvature multiplier: converts chord length to actual curved length
+const CURVATURE_MULTIPLIER = 1.06;
 
 // ============================================
 // HAND POSE MODEL
@@ -515,8 +516,8 @@ function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, 
     
     console.log(`  🔬 Detecting actual nail at (${Math.round(fingertipX)}, ${Math.round(fingertipY)})`);
     
-    // 1. Extract region around fingertip (80x80px window)
-    const regionSize = 80;
+    // 1. Extract region around fingertip (120x120px window - increased for better coverage)
+    const regionSize = 120;  // Increased from 80 to 120
     const halfSize = regionSize / 2;
     const startX = Math.max(0, Math.floor(fingertipX - halfSize));
     const startY = Math.max(0, Math.floor(fingertipY - halfSize));
@@ -531,7 +532,9 @@ function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, 
     
     // 3. Find nail pixels (brighter and less saturated than skin)
     const nailPixels = [];
-    const nailThreshold = skinTone.brightness * 1.15; // Nails are ~15% brighter
+    const nailThreshold = skinTone.brightness * 1.08; // Nails are ~8% brighter (was too strict at 15%)
+    
+    console.log(`  Nail threshold: ${nailThreshold.toFixed(0)} (skin + 8%)`);
     
     for (let y = startY; y < endY; y++) {
         for (let x = startX; x < endX; x++) {
@@ -545,7 +548,7 @@ function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, 
             if (brightness > nailThreshold) {
                 // Also check it's not too colorful (nails are more neutral)
                 const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
-                if (colorVariance < 60) { // Less color variance = more nail-like
+                if (colorVariance < 80) { // Relaxed from 60 to 80
                     nailPixels.push({ x, y });
                 }
             }
@@ -554,7 +557,7 @@ function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, 
     
     console.log(`  Found ${nailPixels.length} potential nail pixels`);
     
-    if (nailPixels.length < 20) {
+    if (nailPixels.length < 10) {  // Reduced from 20 to 10
         console.warn(`  ⚠️ Too few nail pixels detected (${nailPixels.length})`);
         return 0;
     }
@@ -617,7 +620,8 @@ function findWidestHorizontalSpan(pixels, centerY) {
     
     // Find widest line (focus on lines near the fingertip)
     let maxWidth = 0;
-    const searchRange = 30; // Look within 30px of fingertip
+    let bestLine = null;
+    const searchRange = 50; // Increased from 30 to 50px
     
     Object.keys(lines).forEach(y => {
         const yNum = parseInt(y);
@@ -625,13 +629,18 @@ function findWidestHorizontalSpan(pixels, centerY) {
             const xValues = lines[y];
             const minX = Math.min(...xValues);
             const maxX = Math.max(...xValues);
-            const width = maxX - minX;
+            // FIX: Add 1 to include both endpoints!
+            // If pixels at x=100 and x=110, width = 110-100+1 = 11 pixels
+            const width = maxX - minX + 1;
             
             if (width > maxWidth) {
                 maxWidth = width;
+                bestLine = yNum;
             }
         }
     });
+    
+    console.log(`  Best nail line at y=${bestLine}, width=${maxWidth}px`);
     
     return maxWidth;
 }
@@ -652,56 +661,62 @@ function measureNails(handData, referenceData) {
     console.log(`📏 Measuring nails with scale: ${pixelsPerMm.toFixed(2)} pixels/mm`);
     
     return handData.nails.map(nail => {
-        // Convert pixels to millimeters
-        const widthMm = nail.width.pixels / pixelsPerMm;
+        // Convert pixels to millimeters (chord length)
+        const chordMm = nail.width.pixels / pixelsPerMm;
         
-        // Convert mm to size number
-        const sizeNumber = mmToSizeNumber(widthMm);
+        // Apply curvature multiplier to get actual curved length
+        const curvedMm = chordMm * CURVATURE_MULTIPLIER;
         
-        console.log(`  ${nail.finger}: ${nail.width.pixels.toFixed(1)}px ÷ ${pixelsPerMm.toFixed(2)} = ${widthMm.toFixed(1)}mm → Size ${sizeNumber}`);
+        // Convert mm to Tomica size number
+        const sizeNumber = mmToSizeNumber(curvedMm);
+        
+        console.log(`  ${nail.finger}: ${nail.width.pixels.toFixed(1)}px → ${chordMm.toFixed(1)}mm (chord) × ${CURVATURE_MULTIPLIER} = ${curvedMm.toFixed(1)}mm → Size ${sizeNumber}`);
         
         return {
             finger: nail.finger,
-            mm: Math.round(widthMm * 10) / 10, // Round to 1 decimal
-            size: sizeNumber,
-            confidence: handData.confidence
+            chordMm: Math.round(chordMm * 10) / 10,
+            curvedMm: Math.round(curvedMm * 10) / 10,
+            widthMm: Math.round(curvedMm * 10) / 10, // final measurement
+            sizeNumber: sizeNumber,
+            confidence: nail.width.pixels > 0 ? handData.confidence : 0
         };
     });
 }
 
 /**
- * Convert millimeter measurement to nail size number
+ * Convert millimeter measurement to Tomica nail size number
+ * Tomica sizes: 0=17mm, 1=16mm, ..., 9=8mm (1mm steps)
  */
 function mmToSizeNumber(mm) {
-    // Find the size that best matches the measurement
-    for (const sizeInfo of NAIL_SIZE_TABLE) {
-        if (mm >= sizeInfo.minMm && mm < sizeInfo.maxMm) {
-            return sizeInfo.size;
-        }
+    // Round to nearest mm
+    const roundedMm = Math.round(mm);
+    
+    // Find exact match first
+    const exactMatch = NAIL_SIZE_TABLE.find(s => s.mm === roundedMm);
+    if (exactMatch) {
+        return exactMatch.size;
     }
     
     // Edge cases
-    if (mm >= 18) return 0; // Largest
-    if (mm < 5) return 11; // Smallest
+    if (roundedMm >= 17) return 0; // Largest (Size 0)
+    if (roundedMm <= 8) return 9;  // Smallest (Size 9)
     
-    // Default fallback: round to nearest size
-    const approxSize = Math.round(18 - mm);
-    return Math.max(0, Math.min(11, approxSize));
+    // Find closest size: 17 - mm gives the size
+    // 17mm → 0, 16mm → 1, 15mm → 2, etc.
+    const size = 17 - roundedMm;
+    return Math.max(0, Math.min(9, size));
 }
 
 /**
- * Convert size number to millimeter range
+ * Convert Tomica size number to millimeter measurement
  */
 function sizeNumberToMm(sizeNumber) {
     const sizeInfo = NAIL_SIZE_TABLE.find(s => s.size === sizeNumber);
     if (sizeInfo) {
-        return {
-            min: sizeInfo.minMm,
-            max: sizeInfo.maxMm,
-            average: (sizeInfo.minMm + sizeInfo.maxMm) / 2
-        };
+        return sizeInfo.mm;
     }
-    return { min: 7, max: 18, average: 12 }; // Default
+    // Default: size 4 = 13mm (middle size)
+    return 13;
 }
 
 // ============================================
