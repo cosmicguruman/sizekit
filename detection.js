@@ -110,36 +110,50 @@ async function detectCreditCard(canvas, ctx) {
     console.log(`📐 Scanning ${width}x${height}px image for credit card...`);
     
     const targetAspect = 1.586;
-    const minCardWidth = width * 0.18;  // Card must be 18-45% of image (stricter)
+    const minCardWidth = width * 0.18;  // Card must be 18-45% of image
     const maxCardWidth = width * 0.45;
     
+    console.log(`   Card width range: ${minCardWidth.toFixed(0)}-${maxCardWidth.toFixed(0)}px`);
+    
     const candidates = [];
+    const rejected = { brightness: 0, uniformity: 0, aspect: 0, total: 0 };
     
     // Scan image in a grid pattern
-    const step = 35; // Coarser grid for speed
+    const step = 40; // Grid spacing
     for (let y = 0; y < height - 100; y += step) {
         for (let x = 0; x < width - 100; x += step) {
             // Try different rectangle sizes
-            for (let w = minCardWidth; w <= maxCardWidth; w += 60) {
+            for (let w = minCardWidth; w <= maxCardWidth; w += 70) {
                 const h = w / targetAspect;
                 
                 if (x + w > width || y + h > height) continue;
                 
-                // STRICT FILTERS: Must pass all checks
+                rejected.total++;
+                
+                // Check brightness and uniformity
                 const brightness = getRegionBrightness(data, x, y, w, h, width);
                 const uniformity = getRegionUniformity(data, x, y, w, h, width);
                 
-                // Credit card MUST be bright (>120) and uniform (>0.85)
-                if (brightness < 120) continue;
-                if (uniformity < 0.85) continue;
+                // RELAXED: Lower thresholds
+                if (brightness < 110) {  // Was 120, now 110
+                    rejected.brightness++;
+                    continue;
+                }
+                if (uniformity < 0.75) {  // Was 0.85, now 0.75
+                    rejected.uniformity++;
+                    continue;
+                }
                 
-                // Check aspect ratio is close to credit card
+                // Check aspect ratio
                 const aspectRatio = w / h;
                 const aspectError = Math.abs(aspectRatio - targetAspect) / targetAspect;
-                if (aspectError > 0.15) continue; // Must be within 15% of correct ratio
+                if (aspectError > 0.2) {  // Was 0.15, now 0.2
+                    rejected.aspect++;
+                    continue;
+                }
                 
-                // Score based on size and quality
-                const sizeScore = w / width; // Prefer larger cards
+                // This one passed! Add it
+                const sizeScore = w / width;
                 const qualityScore = (brightness / 255) * uniformity;
                 const score = sizeScore * qualityScore * 100;
                 
@@ -156,9 +170,19 @@ async function detectCreditCard(canvas, ctx) {
         }
     }
     
-    console.log(`   Found ${candidates.length} potential cards`);
+    console.log(`   Checked ${rejected.total} regions:`);
+    console.log(`     - ${rejected.brightness} rejected (brightness < 110)`);
+    console.log(`     - ${rejected.uniformity} rejected (uniformity < 0.75)`);
+    console.log(`     - ${rejected.aspect} rejected (wrong aspect ratio)`);
+    console.log(`     - ${candidates.length} PASSED all filters ✓`);
     
     if (candidates.length === 0) {
+        console.warn('❌ NO CARDS FOUND!');
+        console.warn('   Try:');
+        console.warn('   - Better lighting');
+        console.warn('   - Hold card flat');
+        console.warn('   - Use a white/light colored card');
+        console.warn('   - Move card closer to camera');
         return null;
     }
     
@@ -168,9 +192,20 @@ async function detectCreditCard(canvas, ctx) {
     
     const pixelsPerMm = bestRect.width / 85.6;
     
-    console.log(`✅ Card: (${bestRect.x}, ${bestRect.y}) ${bestRect.width}×${bestRect.height}px`);
-    console.log(`   Brightness: ${bestRect.brightness.toFixed(0)}, Uniformity: ${bestRect.uniformity.toFixed(2)}`);
+    console.log(`✅ CARD FOUND!`);
+    console.log(`   Position: (${bestRect.x}, ${bestRect.y})`);
+    console.log(`   Size: ${bestRect.width}×${bestRect.height}px`);
+    console.log(`   Brightness: ${bestRect.brightness.toFixed(0)}/255`);
+    console.log(`   Uniformity: ${bestRect.uniformity.toFixed(2)}`);
     console.log(`   Scale: ${pixelsPerMm.toFixed(2)} px/mm`);
+    
+    // Show top 3 candidates for comparison
+    if (candidates.length > 1) {
+        console.log(`   Other candidates:`);
+        for (let i = 1; i < Math.min(3, candidates.length); i++) {
+            console.log(`     ${i+1}. Score ${candidates[i].score.toFixed(1)} at (${candidates[i].x}, ${candidates[i].y})`);
+        }
+    }
     
     return {
         type: 'creditCard',
