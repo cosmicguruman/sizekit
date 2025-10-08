@@ -521,24 +521,46 @@ function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, 
     const skinTone = getSkinTone(data, imgWidth, baseJoint[0], baseJoint[1]);
     console.log(`  Skin brightness: ${skinTone.brightness.toFixed(0)}`);
     
-    // Sample fingertip pixel as reference for nail
+    // Sample an AREA around fingertip (not just one pixel) to find nail
     const tipY = Math.round(fingertipY);
     const tipX = Math.round(fingertipX);
-    const tipIdx = (tipY * imgWidth + tipX) * 4;
-    const tipBrightness = (data[tipIdx] + data[tipIdx + 1] + data[tipIdx + 2]) / 3;
     
-    console.log(`  Fingertip brightness: ${tipBrightness.toFixed(0)}`);
+    // Sample 5x5 area around fingertip and find brightest pixel
+    let maxBrightness = 0;
+    const sampleRadius = 2;
+    for (let dy = -sampleRadius; dy <= sampleRadius; dy++) {
+        for (let dx = -sampleRadius; dx <= sampleRadius; dx++) {
+            const sampleX = tipX + dx;
+            const sampleY = tipY + dy;
+            if (sampleX >= 0 && sampleX < imgWidth && sampleY >= 0 && sampleY < imgHeight) {
+                const idx = (sampleY * imgWidth + sampleX) * 4;
+                const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+                if (brightness > maxBrightness) {
+                    maxBrightness = brightness;
+                }
+            }
+        }
+    }
     
-    // If fingertip isn't brighter than skin, can't detect nail
-    if (tipBrightness < skinTone.brightness * 1.05) {
-        console.warn(`  ⚠️ Fingertip not bright enough (expected nail)`);
-        return 0;
+    const tipBrightness = maxBrightness;
+    console.log(`  Nail area brightness: ${tipBrightness.toFixed(0)} (max in 5x5 region)`);
+    
+    // If nail area isn't brighter than skin, detection might fail
+    if (tipBrightness < skinTone.brightness * 1.02) {
+        console.warn(`  ⚠️ Nail area not significantly brighter than skin`);
+        // Don't give up yet - continue with detection
     }
     
     // Scan multiple horizontal lines near the fingertip
     let maxWidth = 0;
-    const scanLines = 5; // Check 5 lines above/below fingertip
-    const scanStep = 3;  // 3 pixels apart
+    const scanLines = 7; // Check 7 lines above/below fingertip (was 5)
+    const scanStep = 2;  // 2 pixels apart (was 3)
+    
+    // Calculate edge threshold: nail edge is where brightness drops significantly
+    const edgeThreshold = Math.max(
+        tipBrightness * 0.75,  // 25% drop from nail (was 15%)
+        skinTone.brightness * 1.02  // OR just slightly above skin
+    );
     
     for (let offset = -scanLines * scanStep; offset <= scanLines * scanStep; offset += scanStep) {
         const scanY = tipY + offset;
@@ -550,8 +572,8 @@ function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, 
             const idx = (scanY * imgWidth + x) * 4;
             const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
             
-            // Stop if brightness drops significantly (hit nail edge)
-            if (brightness < tipBrightness * 0.85 || brightness < skinTone.brightness) {
+            // Stop if brightness drops below threshold (hit nail edge)
+            if (brightness < edgeThreshold) {
                 leftEdge = x + 1; // Edge is one pixel back
                 break;
             }
@@ -563,17 +585,17 @@ function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, 
             const idx = (scanY * imgWidth + x) * 4;
             const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
             
-            // Stop if brightness drops significantly (hit nail edge)
-            if (brightness < tipBrightness * 0.85 || brightness < skinTone.brightness) {
+            // Stop if brightness drops below threshold (hit nail edge)
+            if (brightness < edgeThreshold) {
                 rightEdge = x - 1; // Edge is one pixel back
                 break;
             }
         }
         
         const width = rightEdge - leftEdge + 1;
-        if (width > maxWidth && width > 5) { // Must be at least 5px wide
+        if (width > maxWidth && width > 3) { // Must be at least 3px wide (was 5)
             maxWidth = width;
-            console.log(`  Scan line y=${scanY}: left=${leftEdge}, right=${rightEdge}, width=${width}px`);
+            console.log(`  Scan y=${scanY}: L=${leftEdge} R=${rightEdge} W=${width}px`);
         }
     }
     
