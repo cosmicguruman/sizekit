@@ -507,67 +507,83 @@ function calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight, imageD
 
 /**
  * 🔬 ACTUAL NAIL BOUNDARY DETECTION
- * Segments the nail from skin using brightness and color analysis
+ * Scans left/right from fingertip to find nail edges
  */
 function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, tipIndex) {
     const data = imageData.data;
     const imgWidth = imageData.width;
     const imgHeight = imageData.height;
     
-    console.log(`  🔬 Detecting actual nail at (${Math.round(fingertipX)}, ${Math.round(fingertipY)})`);
+    console.log(`  🔬 Detecting nail at fingertip (${Math.round(fingertipX)}, ${Math.round(fingertipY)})`);
     
-    // 1. Extract region around fingertip (120x120px window - increased for better coverage)
-    const regionSize = 120;  // Increased from 80 to 120
-    const halfSize = regionSize / 2;
-    const startX = Math.max(0, Math.floor(fingertipX - halfSize));
-    const startY = Math.max(0, Math.floor(fingertipY - halfSize));
-    const endX = Math.min(imgWidth, Math.floor(fingertipX + halfSize));
-    const endY = Math.min(imgHeight, Math.floor(fingertipY + halfSize));
-    
-    // 2. Sample skin tone (from finger base area)
+    // Sample skin tone from finger base
     const baseJoint = landmarks[tipIndex - 3];
     const skinTone = getSkinTone(data, imgWidth, baseJoint[0], baseJoint[1]);
+    console.log(`  Skin brightness: ${skinTone.brightness.toFixed(0)}`);
     
-    console.log(`  Skin tone: R${skinTone.r} G${skinTone.g} B${skinTone.b}, Brightness: ${skinTone.brightness.toFixed(0)}`);
+    // Sample fingertip pixel as reference for nail
+    const tipY = Math.round(fingertipY);
+    const tipX = Math.round(fingertipX);
+    const tipIdx = (tipY * imgWidth + tipX) * 4;
+    const tipBrightness = (data[tipIdx] + data[tipIdx + 1] + data[tipIdx + 2]) / 3;
     
-    // 3. Find nail pixels (brighter and less saturated than skin)
-    const nailPixels = [];
-    const nailThreshold = skinTone.brightness * 1.08; // Nails are ~8% brighter (was too strict at 15%)
+    console.log(`  Fingertip brightness: ${tipBrightness.toFixed(0)}`);
     
-    console.log(`  Nail threshold: ${nailThreshold.toFixed(0)} (skin + 8%)`);
-    
-    for (let y = startY; y < endY; y++) {
-        for (let x = startX; x < endX; x++) {
-            const idx = (y * imgWidth + x) * 4;
-            const r = data[idx];
-            const g = data[idx + 1];
-            const b = data[idx + 2];
-            const brightness = (r + g + b) / 3;
-            
-            // Is this pixel brighter than skin?
-            if (brightness > nailThreshold) {
-                // Also check it's not too colorful (nails are more neutral)
-                const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
-                if (colorVariance < 80) { // Relaxed from 60 to 80
-                    nailPixels.push({ x, y });
-                }
-            }
-        }
-    }
-    
-    console.log(`  Found ${nailPixels.length} potential nail pixels`);
-    
-    if (nailPixels.length < 10) {  // Reduced from 20 to 10
-        console.warn(`  ⚠️ Too few nail pixels detected (${nailPixels.length})`);
+    // If fingertip isn't brighter than skin, can't detect nail
+    if (tipBrightness < skinTone.brightness * 1.05) {
+        console.warn(`  ⚠️ Fingertip not bright enough (expected nail)`);
         return 0;
     }
     
-    // 4. Find widest horizontal span of nail pixels
-    const width = findWidestHorizontalSpan(nailPixels, fingertipY);
+    // Scan multiple horizontal lines near the fingertip
+    let maxWidth = 0;
+    const scanLines = 5; // Check 5 lines above/below fingertip
+    const scanStep = 3;  // 3 pixels apart
     
-    console.log(`  📏 Measured actual nail width: ${width.toFixed(1)}px`);
+    for (let offset = -scanLines * scanStep; offset <= scanLines * scanStep; offset += scanStep) {
+        const scanY = tipY + offset;
+        if (scanY < 0 || scanY >= imgHeight) continue;
+        
+        // Scan LEFT from fingertip until we hit edge
+        let leftEdge = tipX;
+        for (let x = tipX; x >= Math.max(0, tipX - 60); x--) {
+            const idx = (scanY * imgWidth + x) * 4;
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            
+            // Stop if brightness drops significantly (hit nail edge)
+            if (brightness < tipBrightness * 0.85 || brightness < skinTone.brightness) {
+                leftEdge = x + 1; // Edge is one pixel back
+                break;
+            }
+        }
+        
+        // Scan RIGHT from fingertip until we hit edge
+        let rightEdge = tipX;
+        for (let x = tipX; x <= Math.min(imgWidth - 1, tipX + 60); x++) {
+            const idx = (scanY * imgWidth + x) * 4;
+            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+            
+            // Stop if brightness drops significantly (hit nail edge)
+            if (brightness < tipBrightness * 0.85 || brightness < skinTone.brightness) {
+                rightEdge = x - 1; // Edge is one pixel back
+                break;
+            }
+        }
+        
+        const width = rightEdge - leftEdge + 1;
+        if (width > maxWidth && width > 5) { // Must be at least 5px wide
+            maxWidth = width;
+            console.log(`  Scan line y=${scanY}: left=${leftEdge}, right=${rightEdge}, width=${width}px`);
+        }
+    }
     
-    return width;
+    if (maxWidth === 0) {
+        console.warn(`  ⚠️ Could not find nail edges`);
+        return 0;
+    }
+    
+    console.log(`  📏 Measured nail width: ${maxWidth}px`);
+    return maxWidth;
 }
 
 /**
@@ -605,45 +621,6 @@ function getSkinTone(data, imgWidth, centerX, centerY) {
     };
 }
 
-/**
- * Find the widest horizontal span of pixels near the fingertip
- */
-function findWidestHorizontalSpan(pixels, centerY) {
-    if (pixels.length === 0) return 0;
-    
-    // Group pixels by Y coordinate (scan horizontal lines)
-    const lines = {};
-    pixels.forEach(p => {
-        if (!lines[p.y]) lines[p.y] = [];
-        lines[p.y].push(p.x);
-    });
-    
-    // Find widest line (focus on lines near the fingertip)
-    let maxWidth = 0;
-    let bestLine = null;
-    const searchRange = 50; // Increased from 30 to 50px
-    
-    Object.keys(lines).forEach(y => {
-        const yNum = parseInt(y);
-        if (Math.abs(yNum - centerY) < searchRange) {
-            const xValues = lines[y];
-            const minX = Math.min(...xValues);
-            const maxX = Math.max(...xValues);
-            // FIX: Add 1 to include both endpoints!
-            // If pixels at x=100 and x=110, width = 110-100+1 = 11 pixels
-            const width = maxX - minX + 1;
-            
-            if (width > maxWidth) {
-                maxWidth = width;
-                bestLine = yNum;
-            }
-        }
-    });
-    
-    console.log(`  Best nail line at y=${bestLine}, width=${maxWidth}px`);
-    
-    return maxWidth;
-}
 
 // ============================================
 // NAIL MEASUREMENT
