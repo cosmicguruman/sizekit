@@ -37,9 +37,11 @@
 
         let debugLines = [];
         const maxDebugLines = 6;
-        let corners = [];  // Stores the 4 tapped corners
-        let isCalibrated = false;
+        let tappedCorners = [];  // Initial user taps (hint for detection)
+        let isInitialized = false;
         let pixelsPerMM = null;
+        let cardDetector = null;
+        let autoDetectionActive = false;
 
         const cornerNames = ['TOP-LEFT', 'TOP-RIGHT', 'BOTTOM-RIGHT', 'BOTTOM-LEFT'];
 
@@ -71,13 +73,17 @@
             const detailEl = document.getElementById('instruction-detail');
             const resetBtn = document.getElementById('reset-btn');
 
-            if (corners.length < 4) {
-                textEl.textContent = `Tap corner ${corners.length + 1} of 4`;
-                detailEl.textContent = cornerNames[corners.length];
-                resetBtn.style.display = corners.length > 0 ? 'block' : 'none';
+            if (tappedCorners.length < 4) {
+                textEl.textContent = `Tap corner ${tappedCorners.length + 1} of 4`;
+                detailEl.textContent = cornerNames[tappedCorners.length];
+                resetBtn.style.display = tappedCorners.length > 0 ? 'block' : 'none';
+            } else if (!autoDetectionActive) {
+                textEl.textContent = 'Finding card edges...';
+                detailEl.textContent = 'Please wait';
+                resetBtn.style.display = 'block';
             } else {
-                textEl.textContent = '✓ Calibrated!';
-                detailEl.textContent = `Scale: ${pixelsPerMM.toFixed(2)} px/mm`;
+                textEl.textContent = '✓ Card Locked!';
+                detailEl.textContent = `Scale: ${pixelsPerMM ? pixelsPerMM.toFixed(2) + ' px/mm' : 'calculating...'}`;
                 resetBtn.style.display = 'block';
             }
         }
@@ -85,19 +91,48 @@
         /**
          * Reset calibration
          */
-        function resetCorners() {
-            corners = [];
-            isCalibrated = false;
+        function resetDetection() {
+            tappedCorners = [];
+            isInitialized = false;
             pixelsPerMM = null;
+            autoDetectionActive = false;
+            if (cardDetector) {
+                cardDetector.lastDetection = null;
+                cardDetector.smoothedCorners = null;
+            }
             updateInstructions();
-            addDebug('Calibration reset', 'warning');
+            addDebug('Detection reset', 'warning');
+        }
+
+        /**
+         * Get bounding box from 4 corners
+         */
+        function getBoundingBox(corners) {
+            const xs = corners.map(c => c.x);
+            const ys = corners.map(c => c.y);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+            
+            // Add 10% padding to search region
+            const padding = 0.1;
+            const width = maxX - minX;
+            const height = maxY - minY;
+            
+            return {
+                x: Math.max(0, minX - width * padding),
+                y: Math.max(0, minY - height * padding),
+                width: width * (1 + 2 * padding),
+                height: height * (1 + 2 * padding)
+            };
         }
 
         /**
          * Handle tap/click on canvas
          */
         function handleTap(event) {
-            if (corners.length >= 4) return; // Already calibrated
+            if (tappedCorners.length >= 4) return; // Already have hints
 
             const canvas = document.getElementById('overlay-canvas');
             const rect = canvas.getBoundingClientRect();
@@ -119,22 +154,24 @@
             const x = (clientX - rect.left) * scaleX;
             const y = (clientY - rect.top) * scaleY;
 
-            corners.push({ x, y });
-            addDebug(`Corner ${corners.length}: (${x.toFixed(0)}, ${y.toFixed(0)})`, 'success');
+            tappedCorners.push({ x, y });
+            addDebug(`Hint ${tappedCorners.length}: (${x.toFixed(0)}, ${y.toFixed(0)})`, 'success');
 
-            // If we have all 4 corners, calculate scale
-            if (corners.length === 4) {
-                calculateScale();
-                isCalibrated = true;
+            // If we have all 4 corners, start automatic detection
+            if (tappedCorners.length === 4) {
+                addDebug('Starting automatic detection...', 'info');
+                isInitialized = true;
             }
 
             updateInstructions();
         }
 
         /**
-         * Calculate pixels per millimeter from corners
+         * Calculate pixels per millimeter from detected corners
          */
-        function calculateScale() {
+        function calculateScale(corners) {
+            if (!corners || corners.length !== 4) return;
+            
             // Calculate average width (top edge + bottom edge)
             const topWidth = Math.sqrt(
                 Math.pow(corners[1].x - corners[0].x, 2) + 
@@ -160,15 +197,17 @@
             // Calculate scale from both dimensions (average them)
             const scaleFromWidth = avgWidthPx / CARD_WIDTH_MM;
             const scaleFromHeight = avgHeightPx / CARD_HEIGHT_MM;
-            pixelsPerMM = (scaleFromWidth + scaleFromHeight) / 2;
-
-            addDebug(`Width: ${avgWidthPx.toFixed(1)}px = ${CARD_WIDTH_MM}mm`, 'info');
-            addDebug(`Height: ${avgHeightPx.toFixed(1)}px = ${CARD_HEIGHT_MM}mm`, 'info');
-            addDebug(`✓ Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
+            const newScale = (scaleFromWidth + scaleFromHeight) / 2;
+            
+            // Only update if scale changed significantly (avoid spam)
+            if (!pixelsPerMM || Math.abs(newScale - pixelsPerMM) / pixelsPerMM > 0.05) {
+                pixelsPerMM = newScale;
+                addDebug(`✓ Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
+            }
         }
 
         /**
-         * Draw overlay (corners + green fill)
+         * Draw overlay (tapped hints or detected card)
          */
         function drawOverlay(ctx) {
             // Clear canvas
@@ -178,41 +217,44 @@
             const video = document.getElementById('video');
             ctx.drawImage(video, 0, 0, ctx.canvas.width, ctx.canvas.height);
 
-            // Draw corners
-            corners.forEach((corner, index) => {
-                // Draw dot
-                ctx.beginPath();
-                ctx.arc(corner.x, corner.y, 12, 0, 2 * Math.PI);
-                ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-                ctx.fill();
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 3;
-                ctx.stroke();
+            // If we have automatic detection active, use that
+            if (autoDetectionActive && cardDetector.lastDetection) {
+                // Draw the automatically detected card overlay
+                cardDetector.drawOverlay(ctx, cardDetector.lastDetection);
+            }
+            
+            // If still collecting taps, show tap hints (small dots)
+            if (tappedCorners.length > 0 && tappedCorners.length < 4) {
+                tappedCorners.forEach((corner, index) => {
+                    // Draw small dot
+                    ctx.beginPath();
+                    ctx.arc(corner.x, corner.y, 8, 0, 2 * Math.PI);
+                    ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';  // Yellow for hints
+                    ctx.fill();
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
 
-                // Draw number
-                ctx.fillStyle = 'white';
-                ctx.font = 'bold 16px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText((index + 1).toString(), corner.x, corner.y);
-            });
-
-            // If calibrated, draw green overlay
-            if (corners.length === 4) {
-                // Draw semi-transparent green fill
-                ctx.beginPath();
-                ctx.moveTo(corners[0].x, corners[0].y);
-                ctx.lineTo(corners[1].x, corners[1].y);
-                ctx.lineTo(corners[2].x, corners[2].y);
-                ctx.lineTo(corners[3].x, corners[3].y);
-                ctx.closePath();
-                ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-                ctx.fill();
-
-                // Draw green outline
-                ctx.strokeStyle = 'rgb(0, 255, 0)';
-                ctx.lineWidth = 4;
-                ctx.stroke();
+                    // Draw number
+                    ctx.fillStyle = 'black';
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText((index + 1).toString(), corner.x, corner.y);
+                });
+            }
+            
+            // If we just got all 4 taps but detection not active yet, show all taps
+            if (tappedCorners.length === 4 && !autoDetectionActive) {
+                tappedCorners.forEach((corner, index) => {
+                    ctx.beginPath();
+                    ctx.arc(corner.x, corner.y, 8, 0, 2 * Math.PI);
+                    ctx.fillStyle = 'rgba(255, 255, 0, 0.6)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
             }
         }
 
@@ -224,6 +266,8 @@
                 addDebug('Starting camera...', 'info');
                 
                 const camera = new Camera();
+                cardDetector = new CardDetector();
+                
                 const video = document.getElementById('video');
                 const canvas = document.getElementById('overlay-canvas');
                 const ctx = canvas.getContext('2d', {
@@ -246,15 +290,52 @@
                 });
 
                 // Reset button
-                document.getElementById('reset-btn').addEventListener('click', resetCorners);
+                document.getElementById('reset-btn').addEventListener('click', resetDetection);
 
-                // Animation loop - just draws overlay
-                const animate = () => {
+                // Main processing loop
+                const processFrame = () => {
+                    // If we have 4 taps and automatic detection not yet active
+                    if (isInitialized && tappedCorners.length === 4 && !autoDetectionActive) {
+                        // Get the region of interest from tapped corners
+                        const searchRegion = getBoundingBox(tappedCorners);
+                        
+                        // Get image data
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        
+                        // Try to detect card in that region
+                        const detection = cardDetector.detectCard(imageData, searchRegion);
+                        
+                        if (detection && cardDetector.isStable()) {
+                            // Success! Switch to automatic tracking
+                            autoDetectionActive = true;
+                            addDebug('✓ Card detected automatically!', 'success');
+                            updateInstructions();
+                        }
+                    }
+                    
+                    // If automatic detection is active, keep detecting/tracking
+                    if (autoDetectionActive && tappedCorners.length === 4) {
+                        const searchRegion = getBoundingBox(tappedCorners);
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        
+                        const detection = cardDetector.detectCard(imageData, searchRegion);
+                        
+                        if (detection && detection.corners) {
+                            // Calculate scale from detected corners
+                            calculateScale(detection.corners);
+                            updateInstructions();
+                        }
+                    }
+                    
+                    // Draw overlay
                     drawOverlay(ctx);
-                    requestAnimationFrame(animate);
+                    
+                    requestAnimationFrame(processFrame);
                 };
                 
-                animate();
+                processFrame();
 
             } catch (error) {
                 console.error('Initialization error:', error);
