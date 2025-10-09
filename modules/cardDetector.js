@@ -17,6 +17,7 @@ class CardDetector {
         this.lastDetection = null;
         this.detectionHistory = [];
         this.stableFrames = 0;
+        this.smoothedCorners = null;  // Smoothed corner positions
         
         // Performance tracking
         this.lastProcessTime = 0;
@@ -81,14 +82,23 @@ class CardDetector {
             // Update stability tracking
             if (detection) {
                 this._updateHistory(detection);
-                this.lastDetection = detection;
+                
+                // Smooth the corners to reduce jitter
+                this.smoothedCorners = this._smoothCorners(detection.corners);
+                
+                // Return detection with smoothed corners
+                this.lastDetection = {
+                    ...detection,
+                    corners: this.smoothedCorners
+                };
             } else {
                 this.detectionHistory = [];
                 this.stableFrames = 0;
+                this.smoothedCorners = null;
             }
             
             this.lastProcessTime = performance.now() - startTime;
-            return detection;
+            return this.lastDetection;
             
         } catch (error) {
             console.error('Card detection error:', error);
@@ -201,10 +211,44 @@ class CardDetector {
 
     /**
      * Check if detection is stable
-     * @returns {boolean} True if stable for 2+ frames (FAST locking)
+     * @returns {boolean} True if we have smoothed corners (instant lock)
      */
     isStable() {
-        return this.stableFrames >= 2;
+        return this.smoothedCorners !== null;
+    }
+
+    /**
+     * Smooth corner positions by averaging recent history
+     * Reduces jitter and makes overlay stable
+     * @private
+     */
+    _smoothCorners(currentCorners) {
+        if (this.detectionHistory.length === 0) {
+            return currentCorners;
+        }
+        
+        // Average corner positions from last 3 detections
+        const recentDetections = this.detectionHistory.slice(-3);
+        const smoothed = [];
+        
+        for (let i = 0; i < 4; i++) {
+            let sumX = currentCorners[i].x;
+            let sumY = currentCorners[i].y;
+            let count = 1;
+            
+            for (const detection of recentDetections) {
+                sumX += detection.corners[i].x;
+                sumY += detection.corners[i].y;
+                count++;
+            }
+            
+            smoothed.push({
+                x: Math.round(sumX / count),
+                y: Math.round(sumY / count)
+            });
+        }
+        
+        return smoothed;
     }
 
     /**
@@ -697,11 +741,11 @@ class CardDetector {
      * @private
      */
     _checkConsistency() {
-        if (this.detectionHistory.length < 3) return false;
+        if (this.detectionHistory.length < 2) return false;
         
-        const recent = this.detectionHistory.slice(-3);
+        const recent = this.detectionHistory.slice(-2);
         
-        // Check if corner positions are similar
+        // Check if corner positions are similar (very lenient)
         for (let i = 0; i < 4; i++) {
             const x0 = recent[0].corners[i].x;
             const y0 = recent[0].corners[i].y;
@@ -711,8 +755,8 @@ class CardDetector {
                 const y = recent[j].corners[i].y;
                 const dist = Math.sqrt(Math.pow(x - x0, 2) + Math.pow(y - y0, 2));
                 
-                // If corners moved > 20px, not consistent (TIGHTER)
-                if (dist > 20) return false;
+                // Very lenient: allow up to 50px movement (smoothing handles the rest)
+                if (dist > 50) return false;
             }
         }
         
