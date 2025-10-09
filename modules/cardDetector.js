@@ -62,9 +62,31 @@ class CardDetector {
             this.blurred = new cv.Mat();
             cv.GaussianBlur(this.gray, this.blurred, new cv.Size(5, 5), 0);
             
-            // 4. Detect edges using Canny (lower thresholds = more edges)
+            // 3b. Apply adaptive thresholding to separate card from background
+            const adaptiveThresh = new cv.Mat();
+            cv.adaptiveThreshold(
+                this.blurred,
+                adaptiveThresh,
+                255,
+                cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv.THRESH_BINARY,
+                11,  // Block size
+                2    // Constant subtracted from mean
+            );
+            
+            // 3c. Combine with regular edges for robustness
             this.edges = new cv.Mat();
             cv.Canny(this.blurred, this.edges, 30, 100);
+            
+            // Merge adaptive threshold edges with Canny edges
+            cv.bitwise_or(this.edges, adaptiveThresh, this.edges);
+            
+            // 3d. Apply morphological operations to connect card edges
+            const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+            cv.morphologyEx(this.edges, this.edges, cv.MORPH_CLOSE, kernel);
+            
+            kernel.delete();
+            adaptiveThresh.delete();
             
             // 5. Find contours
             const contours = new cv.MatVector();
