@@ -142,6 +142,13 @@ class CardDetector {
         const data = this.debugData;
         if (!data) return;
         
+        // Draw count at top
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(10, 60, 250, 35);
+        ctx.fillStyle = '#0f0';
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText(`Contours: ${data.contours.length} | Rectangles: ${data.rectangles.length}`, 15, 80);
+        
         // Draw all detected contours in red
         ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
         ctx.lineWidth = 1;
@@ -167,10 +174,23 @@ class CardDetector {
             ctx.closePath();
             ctx.stroke();
             
+            // Draw corner points as cyan dots
+            ctx.fillStyle = 'cyan';
+            for (const corner of rect.corners) {
+                ctx.beginPath();
+                ctx.arc(corner.x, corner.y, 5, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+            
             // Draw aspect ratio text
             ctx.fillStyle = 'yellow';
-            ctx.font = '12px monospace';
-            ctx.fillText(`AR: ${rect.aspectRatio.toFixed(2)}`, rect.corners[0].x, rect.corners[0].y - 5);
+            ctx.font = '14px monospace';
+            ctx.fillText(`AR: ${rect.aspectRatio.toFixed(2)}`, rect.corners[0].x, rect.corners[0].y - 8);
+            
+            // Draw guide fill percentage if available
+            if (rect.guideFill) {
+                ctx.fillText(`Fill: ${(rect.guideFill*100).toFixed(0)}%`, rect.corners[0].x, rect.corners[0].y - 24);
+            }
         }
     }
 
@@ -320,13 +340,22 @@ class CardDetector {
         const rectangles = [];
         let rejectedCount = { corners: 0, aspectRatio: 0, size: 0 };
         
-        for (const contour of contours) {
+        for (let i = 0; i < contours.length; i++) {
+            const contour = contours[i];
+            
             // Approximate contour to polygon
             const polygon = this._approximatePolygon(contour);
+            
+            if (this.debugMode && i < 3) {  // Log first 3 contours
+                console.log(`  Contour ${i}: ${contour.length} points → ${polygon.length} corners`);
+            }
             
             // Must have exactly 4 corners
             if (polygon.length !== 4) {
                 rejectedCount.corners++;
+                if (this.debugMode && i < 3) {
+                    console.log(`    ❌ Has ${polygon.length} corners (need 4)`);
+                }
                 continue;
             }
             
@@ -386,13 +415,72 @@ class CardDetector {
 
     /**
      * Approximate contour to polygon using Douglas-Peucker
+     * Try multiple epsilon values until we get 4 corners
      * @private
      */
     _approximatePolygon(contour) {
         if (contour.length < 4) return contour;
         
-        const epsilon = 0.02 * this._perimeter(contour);
-        return this._douglasPeucker(contour, epsilon);
+        const perimeter = this._perimeter(contour);
+        
+        // Try multiple epsilon values to get exactly 4 corners
+        const epsilonValues = [
+            0.02 * perimeter,
+            0.03 * perimeter,
+            0.04 * perimeter,
+            0.05 * perimeter,
+            0.06 * perimeter,
+            0.08 * perimeter,
+            0.10 * perimeter
+        ];
+        
+        for (const epsilon of epsilonValues) {
+            const simplified = this._douglasPeucker(contour, epsilon);
+            if (simplified.length === 4) {
+                return simplified;
+            }
+        }
+        
+        // If still not 4 corners, find the 4 extreme points (fallback)
+        if (this.debugMode) {
+            console.log(`  📐 Douglas-Peucker failed, using corner detection fallback`);
+        }
+        return this._findFourCorners(contour);
+    }
+
+    /**
+     * Find 4 corners by detecting extreme points (fallback method)
+     * @private
+     */
+    _findFourCorners(contour) {
+        if (contour.length < 4) return contour;
+        
+        // Find extremes: top-left, top-right, bottom-right, bottom-left
+        let topLeft = contour[0];
+        let topRight = contour[0];
+        let bottomLeft = contour[0];
+        let bottomRight = contour[0];
+        
+        for (const point of contour) {
+            // Top-left: minimize x+y
+            if (point.x + point.y < topLeft.x + topLeft.y) {
+                topLeft = point;
+            }
+            // Top-right: maximize x, minimize y
+            if (point.x - point.y > topRight.x - topRight.y) {
+                topRight = point;
+            }
+            // Bottom-right: maximize x+y
+            if (point.x + point.y > bottomRight.x + bottomRight.y) {
+                bottomRight = point;
+            }
+            // Bottom-left: minimize x, maximize y
+            if (-point.x + point.y > -bottomLeft.x + bottomLeft.y) {
+                bottomLeft = point;
+            }
+        }
+        
+        return [topLeft, topRight, bottomRight, bottomLeft];
     }
 
     /**
