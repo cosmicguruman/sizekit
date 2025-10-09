@@ -137,17 +137,21 @@
         }
 
         /**
-         * Get search region around tap point
+         * Get search region around tap point (TIGHT focus on tap area)
          */
         function getSearchRegion(tapX, tapY, canvasWidth, canvasHeight) {
-            // Create a large search area around the tap
-            const searchSize = Math.min(canvasWidth, canvasHeight) * 0.8;
+            // Create a SMALL, focused search area around the tap
+            // Credit card is ~85mm x 54mm, typically 400-600px wide on phone camera
+            const cardApproxSize = Math.min(canvasWidth, canvasHeight) * 0.4; // ~40% of screen
+            
+            // Add 50% padding for safety
+            const searchSize = cardApproxSize * 1.5;
             
             return {
                 x: Math.max(0, tapX - searchSize / 2),
                 y: Math.max(0, tapY - searchSize / 2),
-                width: Math.min(searchSize, canvasWidth),
-                height: Math.min(searchSize, canvasHeight)
+                width: Math.min(searchSize, canvasWidth - Math.max(0, tapX - searchSize / 2)),
+                height: Math.min(searchSize, canvasHeight - Math.max(0, tapY - searchSize / 2))
             };
         }
 
@@ -244,8 +248,23 @@
                     break;
 
                 case STATE.DETECTING:
-                    // Show tap point as yellow dot
+                    // Show search region "spotlight"
                     if (tapPoint) {
+                        const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
+                        
+                        // Dim everything OUTSIDE the search region
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                        ctx.fillRect(0, 0, canvas.width, searchRegion.y); // Top
+                        ctx.fillRect(0, searchRegion.y, searchRegion.x, searchRegion.height); // Left
+                        ctx.fillRect(searchRegion.x + searchRegion.width, searchRegion.y, canvas.width - (searchRegion.x + searchRegion.width), searchRegion.height); // Right
+                        ctx.fillRect(0, searchRegion.y + searchRegion.height, canvas.width, canvas.height - (searchRegion.y + searchRegion.height)); // Bottom
+                        
+                        // Draw search region border (yellow box)
+                        ctx.strokeStyle = '#FFC107';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(searchRegion.x, searchRegion.y, searchRegion.width, searchRegion.height);
+                        
+                        // Draw tap point as yellow dot
                         ctx.beginPath();
                         ctx.arc(tapPoint.x, tapPoint.y, 12, 0, 2 * Math.PI);
                         ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';

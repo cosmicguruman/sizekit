@@ -7,7 +7,8 @@ class CardDetector {
     constructor() {
         // Credit card standard dimensions (ISO/IEC 7810 ID-1)
         this.CARD_ASPECT_RATIO = 1.586; // 85.6mm / 53.98mm
-        this.ASPECT_TOLERANCE = 0.35; // 35% tolerance (more lenient)
+        this.ASPECT_TOLERANCE = 0.35; // 35% tolerance for full image search
+        this.ASPECT_TOLERANCE_GUIDED = 0.60; // 60% tolerance when user tapped (VERY lenient)
         
         // Detection state
         this.lastDetection = null;
@@ -62,9 +63,17 @@ class CardDetector {
             this.blurred = new cv.Mat();
             cv.GaussianBlur(this.gray, this.blurred, new cv.Size(5, 5), 0);
             
-            // 4. Simple Canny edge detection (reliable for cards)
+            // 4. Canny edge detection
+            // If user tapped (guide region), be MORE aggressive to find card on busy backgrounds
+            // Otherwise, be conservative to avoid false positives
             this.edges = new cv.Mat();
-            cv.Canny(this.blurred, this.edges, 50, 150); // Back to more conservative thresholds
+            if (guideRegion) {
+                // User tapped - aggressive detection to find card on textured surfaces
+                cv.Canny(this.blurred, this.edges, 30, 120);
+            } else {
+                // No tap - conservative to avoid noise
+                cv.Canny(this.blurred, this.edges, 50, 150);
+            }
             
             // 5. Find contours
             const contours = new cv.MatVector();
@@ -275,13 +284,14 @@ class CardDetector {
         const rectangles = [];
         
         // Card-specific size constraints
+        // If we have a guide region (user tapped), be VERY lenient
         const minArea = guideRegion ? 
-            (guideRegion.width * guideRegion.height * 0.15) : // At least 15% of guide
+            (guideRegion.width * guideRegion.height * 0.05) : // Just 5% of tap region (very lenient)
             (imageData.width * imageData.height * 0.03); // Or 3% of full image
             
         const maxArea = guideRegion ?
-            (guideRegion.width * guideRegion.height * 1.5) : // Max 150% of guide (reject huge objects)
-            (imageData.width * imageData.height * 0.4); // Or max 40% of full image (reject laptop screens)
+            (guideRegion.width * guideRegion.height * 0.95) : // Max 95% of tap region (user tapped on card)
+            (imageData.width * imageData.height * 0.4); // Or max 40% of full image
         
         for (let i = 0; i < contours.size(); i++) {
             const contour = contours.get(i);
@@ -315,9 +325,11 @@ class CardDetector {
                 const aspectRatio = width / height;
                 
                 // Check if aspect ratio matches credit card
+                // Use lenient tolerance if user tapped (guide region exists)
                 const aspectError = Math.abs(aspectRatio - this.CARD_ASPECT_RATIO) / this.CARD_ASPECT_RATIO;
+                const tolerance = guideRegion ? this.ASPECT_TOLERANCE_GUIDED : this.ASPECT_TOLERANCE;
                 
-                if (aspectError <= this.ASPECT_TOLERANCE) {
+                if (aspectError <= tolerance) {
                     rectangles.push({
                         corners: orderedCorners,
                         width: width,
@@ -353,13 +365,22 @@ class CardDetector {
             const brightness = this._checkBrightness(rect.corners, imageData);
             const uniformity = this._checkUniformity(rect.corners, imageData);
             
-            // More lenient filters: brightness > 20%, uniformity > 40%
-            // Accept anything that looks card-like
-            if (brightness > 0.2 && uniformity > 0.4) {
-                validCandidates.push({ rect, brightness, uniformity });
+            // If user tapped (guide region), be VERY lenient - they know where the card is!
+            if (guideRegion) {
+                // Accept almost anything in the tap region (brightness > 10%, uniformity > 20%)
+                if (brightness > 0.1 && uniformity > 0.2) {
+                    validCandidates.push({ rect, brightness, uniformity });
+                } else {
+                    // Still include it with penalty
+                    validCandidates.push({ rect, brightness: brightness * 0.3, uniformity: uniformity * 0.3 });
+                }
             } else {
-                // Even if it doesn't pass, include it with lower score
-                validCandidates.push({ rect, brightness: brightness * 0.5, uniformity: uniformity * 0.5 });
+                // No tap - be more strict
+                if (brightness > 0.2 && uniformity > 0.4) {
+                    validCandidates.push({ rect, brightness, uniformity });
+                } else {
+                    validCandidates.push({ rect, brightness: brightness * 0.5, uniformity: uniformity * 0.5 });
+                }
             }
         }
         
