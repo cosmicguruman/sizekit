@@ -163,34 +163,39 @@ class CardDetector {
         }
         
         // Draw all rectangle candidates in yellow
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.7)';
-        ctx.lineWidth = 2;
-        for (const rect of data.rectangles) {
+        for (let i = 0; i < data.rectangles.length; i++) {
+            const rect = data.rectangles[i];
+            const isLargest = i === 0; // First is largest (sorted by size)
+            
+            // Largest rectangle gets brighter/thicker outline
+            ctx.strokeStyle = isLargest ? 'rgba(255, 255, 0, 1.0)' : 'rgba(255, 255, 0, 0.5)';
+            ctx.lineWidth = isLargest ? 4 : 2;
+            
             ctx.beginPath();
             ctx.moveTo(rect.corners[0].x, rect.corners[0].y);
-            for (let i = 1; i < rect.corners.length; i++) {
-                ctx.lineTo(rect.corners[i].x, rect.corners[i].y);
+            for (let j = 1; j < rect.corners.length; j++) {
+                ctx.lineTo(rect.corners[j].x, rect.corners[j].y);
             }
             ctx.closePath();
             ctx.stroke();
             
             // Draw corner points as cyan dots
-            ctx.fillStyle = 'cyan';
+            ctx.fillStyle = isLargest ? 'cyan' : 'rgba(0, 255, 255, 0.5)';
             for (const corner of rect.corners) {
                 ctx.beginPath();
-                ctx.arc(corner.x, corner.y, 5, 0, 2 * Math.PI);
+                ctx.arc(corner.x, corner.y, isLargest ? 6 : 4, 0, 2 * Math.PI);
                 ctx.fill();
             }
             
-            // Draw aspect ratio text
-            ctx.fillStyle = 'yellow';
-            ctx.font = '14px monospace';
-            ctx.fillText(`AR: ${rect.aspectRatio.toFixed(2)}`, rect.corners[0].x, rect.corners[0].y - 8);
+            // Draw info text
+            ctx.fillStyle = isLargest ? 'yellow' : 'rgba(255, 255, 0, 0.7)';
+            ctx.font = isLargest ? 'bold 14px monospace' : '12px monospace';
             
-            // Draw guide fill percentage if available
-            if (rect.guideFill) {
-                ctx.fillText(`Fill: ${(rect.guideFill*100).toFixed(0)}%`, rect.corners[0].x, rect.corners[0].y - 24);
-            }
+            const label = isLargest ? '★ LARGEST' : `#${i+1}`;
+            ctx.fillText(`${label} AR:${rect.aspectRatio.toFixed(2)}`, rect.corners[0].x, rect.corners[0].y - 8);
+            
+            // Draw dimensions
+            ctx.fillText(`${rect.width.toFixed(0)}×${rect.height.toFixed(0)}`, rect.corners[0].x, rect.corners[0].y - 24);
         }
     }
 
@@ -291,15 +296,20 @@ class CardDetector {
                     // Start a new contour
                     const contour = this._traceContour(edges, visited, x, y, width, height);
                     
-                    // Only keep contours with enough points
-                    if (contour.length > 50) {
+                    // Only keep LARGE contours (ignore text/logos/small features)
+                    // Card outline will be one of the largest contours
+                    if (contour.length > 200) {  // Increased from 50 to 200
                         contours.push(contour);
                     }
                 }
             }
         }
         
-        return contours;
+        // Sort by size (largest first) - card outline should be biggest
+        contours.sort((a, b) => b.length - a.length);
+        
+        // Only keep top 5 largest contours (ignore small internal features)
+        return contours.slice(0, 5);
     }
 
     /**
@@ -408,6 +418,13 @@ class CardDetector {
         
         if (this.debugMode && rectangles.length === 0) {
             console.log(`📊 Rejections: ${rejectedCount.corners} corners, ${rejectedCount.aspectRatio} aspect ratio, ${rejectedCount.size} size`);
+        }
+        
+        // Sort by size (largest first) - prioritize card outline over internal features
+        rectangles.sort((a, b) => b.width - a.width);
+        
+        if (this.debugMode && rectangles.length > 0) {
+            console.log(`📐 Found ${rectangles.length} valid rectangles (sorted by size)`);
         }
         
         return rectangles;
@@ -574,28 +591,40 @@ class CardDetector {
         let bestScore = 0;
         let bestRect = null;
         
+        // Find max width for normalization
+        const maxWidth = Math.max(...rectangles.map(r => r.width));
+        
         for (const rect of rectangles) {
-            // Score based on: aspect ratio accuracy, guide fill match, brightness uniformity
+            // Score based on: SIZE (most important), aspect ratio, guide fill
             const aspectScore = 1 - rect.aspectError;
-            const brightnessScore = this._checkBrightness(rect.corners, imageData);
             
-            // If guide provided, prefer rectangles that fill it well
-            let sizeScore;
+            // SIZE SCORE: Heavily favor LARGEST rectangle (card outline)
+            // This is the key - internal features will be smaller
+            const absoluteSizeScore = rect.width / maxWidth;  // 0-1, relative to largest
+            
+            // If guide provided, also check fill
+            let guideFillScore = 1.0;
             if (guideRegion && rect.guideFill) {
-                // Prefer 80-90% fill
                 const targetFill = 0.85;
                 const fillError = Math.abs(rect.guideFill - targetFill);
-                sizeScore = Math.max(0, 1 - fillError * 2);
-            } else {
-                sizeScore = Math.min(rect.width / imageData.width, 0.8);
+                guideFillScore = Math.max(0, 1 - fillError * 2);
             }
             
-            const score = aspectScore * 0.4 + sizeScore * 0.4 + brightnessScore * 0.2;
+            // SCORING: Size is most important (50%), then aspect ratio (30%), then guide fill (20%)
+            const score = absoluteSizeScore * 0.5 + aspectScore * 0.3 + guideFillScore * 0.2;
+            
+            if (this.debugMode) {
+                console.log(`    Score: ${score.toFixed(2)} = size:${absoluteSizeScore.toFixed(2)} × 0.5 + aspect:${aspectScore.toFixed(2)} × 0.3 + fill:${guideFillScore.toFixed(2)} × 0.2`);
+            }
             
             if (score > bestScore) {
                 bestScore = score;
                 bestRect = rect;
             }
+        }
+        
+        if (this.debugMode && bestRect) {
+            console.log(`  🏆 Best: ${bestRect.width.toFixed(0)}×${bestRect.height.toFixed(0)}px, score=${bestScore.toFixed(2)}`);
         }
         
         return bestRect;
