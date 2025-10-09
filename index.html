@@ -13,18 +13,10 @@
         <canvas id="overlay-canvas"></canvas>
     </div>
 
-    <!-- Guide Rectangle (credit card outline) -->
-    <div id="guide-rectangle">
-        <div class="guide-corner top-left"></div>
-        <div class="guide-corner top-right"></div>
-        <div class="guide-corner bottom-left"></div>
-        <div class="guide-corner bottom-right"></div>
-    </div>
-
     <!-- Instructions Overlay -->
     <div id="instructions">
-        <div id="instruction-text">Align card with guide</div>
-        <div id="instruction-detail">Then tap the 4 corners</div>
+        <div id="instruction-text">Tap your credit card</div>
+        <div id="instruction-detail">Place card flat on surface</div>
         <button id="reset-btn" style="display: none;">Reset</button>
     </div>
 
@@ -57,25 +49,19 @@
 
         // App state
         const STATE = {
-            ALIGNING: 'aligning',
-            COLLECTING_TAPS: 'collecting_taps',
-            VERIFYING: 'verifying',
-            LOCKED: 'locked',
-            FAILED: 'failed'
+            WAITING: 'waiting',
+            DETECTING: 'detecting',
+            LOCKED: 'locked'
         };
 
         let debugLines = [];
         const maxDebugLines = 6;
-        let tappedCorners = [];
+        let tapPoint = null;
         let pixelsPerMM = null;
         let cardDetector = null;
-        let currentState = STATE.ALIGNING;
-        let verificationFrames = 0;
-        let verificationAttempts = 0;
-        const VERIFICATION_FRAMES_NEEDED = 10; // Must be stable for 10 frames
-        const MAX_VERIFICATION_ATTEMPTS = 60; // Try for ~2 seconds
-
-        const cornerNames = ['TOP-LEFT', 'TOP-RIGHT', 'BOTTOM-RIGHT', 'BOTTOM-LEFT'];
+        let currentState = STATE.WAITING;
+        let detectionAttempts = 0;
+        const MAX_DETECTION_ATTEMPTS = 30; // Try for ~1 second after tap
 
         /**
          * Add debug message to console
@@ -104,91 +90,63 @@
             const textEl = document.getElementById('instruction-text');
             const detailEl = document.getElementById('instruction-detail');
             const resetBtn = document.getElementById('reset-btn');
-            const guideEl = document.getElementById('guide-rectangle');
 
             // Remove all state classes
             textEl.className = '';
             detailEl.className = '';
-            guideEl.className = '';
 
             switch (currentState) {
-                case STATE.ALIGNING:
-                    textEl.textContent = 'Align card with guide';
-                    detailEl.textContent = 'Then tap the 4 corners';
+                case STATE.WAITING:
+                    textEl.textContent = 'Tap your credit card';
+                    detailEl.textContent = 'Place card flat on surface';
                     resetBtn.style.display = 'none';
                     break;
 
-                case STATE.COLLECTING_TAPS:
-                    textEl.textContent = `Tap corner ${tappedCorners.length + 1} of 4`;
-                    detailEl.textContent = cornerNames[tappedCorners.length];
-                    detailEl.className = 'highlight';
-                    resetBtn.style.display = 'block';
-                    break;
-
-                case STATE.VERIFYING:
-                    textEl.textContent = 'Verifying...';
+                case STATE.DETECTING:
+                    textEl.textContent = 'Detecting...';
                     textEl.className = 'warning';
-                    detailEl.textContent = 'Hold card steady';
-                    guideEl.className = 'verifying';
+                    detailEl.textContent = 'Hold steady';
                     resetBtn.style.display = 'block';
                     break;
 
                 case STATE.LOCKED:
-                    textEl.textContent = '✓ Card Locked!';
+                    textEl.textContent = '✓ Card Detected!';
                     textEl.className = 'success';
                     detailEl.textContent = `Scale: ${pixelsPerMM ? pixelsPerMM.toFixed(2) + ' px/mm' : '...'}`;
                     detailEl.className = 'highlight';
-                    guideEl.className = 'locked';
-                    resetBtn.style.display = 'block';
-                    break;
-
-                case STATE.FAILED:
-                    textEl.textContent = '❌ Verification Failed';
-                    textEl.className = 'warning';
-                    detailEl.textContent = 'Tap Reset and try again';
                     resetBtn.style.display = 'block';
                     break;
             }
         }
 
         /**
-         * Reset calibration
+         * Reset detection
          */
         function resetDetection() {
-            tappedCorners = [];
+            tapPoint = null;
             pixelsPerMM = null;
-            currentState = STATE.ALIGNING;
-            verificationFrames = 0;
-            verificationAttempts = 0;
+            currentState = STATE.WAITING;
+            detectionAttempts = 0;
             if (cardDetector) {
                 cardDetector.lastDetection = null;
                 cardDetector.smoothedCorners = null;
             }
             updateInstructions();
-            addDebug('Reset - align card and tap corners', 'warning');
+            addDebug('Reset - tap card to detect', 'warning');
         }
 
         /**
-         * Get bounding box from 4 corners
+         * Get search region around tap point
          */
-        function getBoundingBox(corners) {
-            const xs = corners.map(c => c.x);
-            const ys = corners.map(c => c.y);
-            const minX = Math.min(...xs);
-            const maxX = Math.max(...xs);
-            const minY = Math.min(...ys);
-            const maxY = Math.max(...ys);
-            
-            // Add 10% padding to search region
-            const padding = 0.1;
-            const width = maxX - minX;
-            const height = maxY - minY;
+        function getSearchRegion(tapX, tapY, canvasWidth, canvasHeight) {
+            // Create a large search area around the tap
+            const searchSize = Math.min(canvasWidth, canvasHeight) * 0.8;
             
             return {
-                x: Math.max(0, minX - width * padding),
-                y: Math.max(0, minY - height * padding),
-                width: width * (1 + 2 * padding),
-                height: height * (1 + 2 * padding)
+                x: Math.max(0, tapX - searchSize / 2),
+                y: Math.max(0, tapY - searchSize / 2),
+                width: Math.min(searchSize, canvasWidth),
+                height: Math.min(searchSize, canvasHeight)
             };
         }
 
@@ -196,9 +154,8 @@
          * Handle tap/click on canvas
          */
         function handleTap(event) {
-            // Only accept taps in ALIGNING or COLLECTING_TAPS states
-            if (currentState !== STATE.ALIGNING && currentState !== STATE.COLLECTING_TAPS) return;
-            if (tappedCorners.length >= 4) return;
+            // Only accept taps in WAITING state
+            if (currentState !== STATE.WAITING) return;
 
             const canvas = document.getElementById('overlay-canvas');
             const rect = canvas.getBoundingClientRect();
@@ -220,19 +177,11 @@
             const x = (clientX - rect.left) * scaleX;
             const y = (clientY - rect.top) * scaleY;
 
-            tappedCorners.push({ x, y });
-            addDebug(`Corner ${tappedCorners.length}: (${x.toFixed(0)}, ${y.toFixed(0)})`, 'success');
-
-            // Update state
-            if (tappedCorners.length === 1) {
-                currentState = STATE.COLLECTING_TAPS;
-            } else if (tappedCorners.length === 4) {
-                currentState = STATE.VERIFYING;
-                verificationFrames = 0;
-                verificationAttempts = 0;
-                addDebug('Starting verification...', 'info');
-            }
-
+            tapPoint = { x, y };
+            currentState = STATE.DETECTING;
+            detectionAttempts = 0;
+            
+            addDebug(`Tapped at (${x.toFixed(0)}, ${y.toFixed(0)}) - detecting card...`, 'info');
             updateInstructions();
         }
 
@@ -289,39 +238,22 @@
 
             // Draw based on current state
             switch (currentState) {
-                case STATE.ALIGNING:
-                    // Just show camera, guide is visible via CSS
+                case STATE.WAITING:
+                    // Just show camera
                     break;
 
-                case STATE.COLLECTING_TAPS:
-                    // Show tapped corners as yellow dots
-                    tappedCorners.forEach((corner, index) => {
+                case STATE.DETECTING:
+                    // Show tap point as yellow dot
+                    if (tapPoint) {
                         ctx.beginPath();
-                        ctx.arc(corner.x, corner.y, 10, 0, 2 * Math.PI);
-                        ctx.fillStyle = 'rgba(255, 255, 0, 0.9)';
+                        ctx.arc(tapPoint.x, tapPoint.y, 12, 0, 2 * Math.PI);
+                        ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
                         ctx.fill();
                         ctx.strokeStyle = 'white';
                         ctx.lineWidth = 3;
                         ctx.stroke();
-
-                        // Draw number
-                        ctx.fillStyle = 'black';
-                        ctx.font = 'bold 14px sans-serif';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText((index + 1).toString(), corner.x, corner.y);
-                    });
-                    break;
-
-                case STATE.VERIFYING:
-                    // Show small yellow dots for taps
-                    tappedCorners.forEach((corner) => {
-                        ctx.beginPath();
-                        ctx.arc(corner.x, corner.y, 6, 0, 2 * Math.PI);
-                        ctx.fillStyle = 'rgba(255, 255, 0, 0.6)';
-                        ctx.fill();
-                    });
-                    // Also show detected card if available
+                    }
+                    // Show detected card if available
                     if (cardDetector.lastDetection) {
                         cardDetector.drawOverlay(ctx, cardDetector.lastDetection);
                     }
@@ -331,21 +263,6 @@
                     // Show detected card overlay
                     if (cardDetector.lastDetection) {
                         cardDetector.drawOverlay(ctx, cardDetector.lastDetection);
-                    }
-                    break;
-
-                case STATE.FAILED:
-                    // Show red X over tapped region
-                    if (tappedCorners.length === 4) {
-                        ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-                        ctx.lineWidth = 4;
-                        ctx.beginPath();
-                        ctx.moveTo(tappedCorners[0].x, tappedCorners[0].y);
-                        for (let i = 1; i < 4; i++) {
-                            ctx.lineTo(tappedCorners[i].x, tappedCorners[i].y);
-                        }
-                        ctx.closePath();
-                        ctx.stroke();
                     }
                     break;
             }
@@ -393,12 +310,12 @@
 
                 // Main processing loop
                 const processFrame = () => {
-                    // Handle verification state
-                    if (currentState === STATE.VERIFYING) {
-                        verificationAttempts++;
+                    // Handle detecting state
+                    if (currentState === STATE.DETECTING && tapPoint) {
+                        detectionAttempts++;
                         
-                        // Get the region of interest from tapped corners
-                        const searchRegion = getBoundingBox(tappedCorners);
+                        // Get the search region around tap point
+                        const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
                         
                         // Get image data
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -412,35 +329,25 @@
                             calculateScale(detection.corners);
                             
                             if (pixelsPerMM && pixelsPerMM > 2 && pixelsPerMM < 15) {
-                                // Scale looks good! Count as verification frame
-                                verificationFrames++;
-                                
-                                if (verificationFrames >= VERIFICATION_FRAMES_NEEDED) {
-                                    // SUCCESS - card verified!
-                                    currentState = STATE.LOCKED;
-                                    addDebug(`✓ Verified! Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
-                                    updateInstructions();
-                                }
-                            } else {
-                                // Scale is off - reset verification
-                                verificationFrames = 0;
+                                // SUCCESS - card detected!
+                                currentState = STATE.LOCKED;
+                                addDebug(`✓ Detected! Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
+                                updateInstructions();
                             }
-                        } else {
-                            // Detection failed - reset verification counter
-                            verificationFrames = 0;
                         }
                         
                         // Check if we've exceeded max attempts
-                        if (verificationAttempts >= MAX_VERIFICATION_ATTEMPTS) {
-                            currentState = STATE.FAILED;
-                            addDebug('❌ Verification timeout - try again', 'error');
+                        if (detectionAttempts >= MAX_DETECTION_ATTEMPTS) {
+                            currentState = STATE.WAITING;
+                            tapPoint = null;
+                            addDebug('❌ Detection timeout - tap again', 'error');
                             updateInstructions();
                         }
                     }
                     
                     // Handle locked state - keep tracking
-                    if (currentState === STATE.LOCKED) {
-                        const searchRegion = getBoundingBox(tappedCorners);
+                    if (currentState === STATE.LOCKED && tapPoint) {
+                        const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                         
