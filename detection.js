@@ -240,7 +240,7 @@ function getRegionBrightness(data, x, y, w, h, imgWidth) {
         }
     }
     
-    return count > 0 ? sum / count / 255 : 0; // Normalize to 0-1
+    return count > 0 ? sum / count : 0; // Return 0-255 range (NOT normalized)
 }
 
 // Helper: Get uniformity (low variance = more uniform)
@@ -584,105 +584,138 @@ function calculateNailWidth(landmarks, tipIndex, imageWidth, imageHeight, imageD
 
 /**
  * 🔬 ACTUAL NAIL BOUNDARY DETECTION
- * Scans left/right from fingertip to find nail edges
+ * Uses SHADOW/EDGE detection at nail boundaries (not brightness)
+ * Nails have natural shadows at their curved edges
  */
 function detectActualNailBoundary(imageData, fingertipX, fingertipY, landmarks, tipIndex) {
     const data = imageData.data;
     const imgWidth = imageData.width;
     const imgHeight = imageData.height;
     
-    console.log(`  🔬 Detecting nail at fingertip (${Math.round(fingertipX)}, ${Math.round(fingertipY)})`);
+    console.log(`  🔬 Detecting nail edges using shadows at (${Math.round(fingertipX)}, ${Math.round(fingertipY)})`);
     
-    // Sample skin tone from finger base
-    const baseJoint = landmarks[tipIndex - 3];
-    const skinTone = getSkinTone(data, imgWidth, baseJoint[0], baseJoint[1]);
-    console.log(`  Skin brightness: ${skinTone.brightness.toFixed(0)}`);
+    // Extract region around fingertip for edge detection
+    const regionSize = 120;
+    const startX = Math.max(0, Math.floor(fingertipX - regionSize/2));
+    const startY = Math.max(0, Math.floor(fingertipY - regionSize/2));
+    const endX = Math.min(imgWidth, Math.floor(fingertipX + regionSize/2));
+    const endY = Math.min(imgHeight, Math.floor(fingertipY + regionSize/2));
+    const regionWidth = endX - startX;
+    const regionHeight = endY - startY;
     
-    // Sample an AREA around fingertip (not just one pixel) to find nail
-    const tipY = Math.round(fingertipY);
-    const tipX = Math.round(fingertipX);
+    // Convert region to grayscale and compute gradients
+    const gradients = computeGradients(data, imgWidth, startX, startY, endX, endY);
     
-    // Sample 5x5 area around fingertip and find brightest pixel
-    let maxBrightness = 0;
-    const sampleRadius = 2;
-    for (let dy = -sampleRadius; dy <= sampleRadius; dy++) {
-        for (let dx = -sampleRadius; dx <= sampleRadius; dx++) {
-            const sampleX = tipX + dx;
-            const sampleY = tipY + dy;
-            if (sampleX >= 0 && sampleX < imgWidth && sampleY >= 0 && sampleY < imgHeight) {
-                const idx = (sampleY * imgWidth + sampleX) * 4;
-                const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-                if (brightness > maxBrightness) {
-                    maxBrightness = brightness;
+    // Find edges by looking for strongest gradient changes
+    // Nail edges have shadows → strong vertical gradients
+    const centerX = Math.floor(regionWidth / 2);
+    const centerY = Math.floor(regionHeight / 2);
+    
+    // Scan LEFT from center for edge (shadow)
+    let leftEdge = null;
+    let maxLeftGradient = 20; // Minimum threshold
+    
+    for (let x = centerX; x > 10; x--) {
+        let gradientSum = 0;
+        let count = 0;
+        
+        // Sample vertically around this X position
+        for (let y = Math.floor(centerY - 20); y < Math.floor(centerY + 20); y++) {
+            if (y >= 0 && y < regionHeight) {
+                const gradient = gradients[y * regionWidth + x];
+                if (gradient > 15) {  // Has an edge here
+                    gradientSum += gradient;
+                    count++;
                 }
             }
         }
-    }
-    
-    const tipBrightness = maxBrightness;
-    console.log(`  Nail area brightness: ${tipBrightness.toFixed(0)} (max in 5x5 region)`);
-    
-    // If nail area isn't brighter than skin, detection might fail
-    if (tipBrightness < skinTone.brightness * 1.02) {
-        console.warn(`  ⚠️ Nail area not significantly brighter than skin`);
-        // Don't give up yet - continue with detection
-    }
-    
-    // Scan multiple horizontal lines near the fingertip
-    let maxWidth = 0;
-    const scanLines = 7; // Check 7 lines above/below fingertip (was 5)
-    const scanStep = 2;  // 2 pixels apart (was 3)
-    
-    // Calculate edge threshold: nail edge is where brightness drops significantly
-    const edgeThreshold = Math.max(
-        tipBrightness * 0.75,  // 25% drop from nail (was 15%)
-        skinTone.brightness * 1.02  // OR just slightly above skin
-    );
-    
-    for (let offset = -scanLines * scanStep; offset <= scanLines * scanStep; offset += scanStep) {
-        const scanY = tipY + offset;
-        if (scanY < 0 || scanY >= imgHeight) continue;
         
-        // Scan LEFT from fingertip until we hit edge
-        let leftEdge = tipX;
-        for (let x = tipX; x >= Math.max(0, tipX - 60); x--) {
-            const idx = (scanY * imgWidth + x) * 4;
-            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-            
-            // Stop if brightness drops below threshold (hit nail edge)
-            if (brightness < edgeThreshold) {
-                leftEdge = x + 1; // Edge is one pixel back
-                break;
+        if (count > 5) {  // Need consistent edge across multiple Y positions
+            const avgGradient = gradientSum / count;
+            if (avgGradient > maxLeftGradient) {
+                maxLeftGradient = avgGradient;
+                leftEdge = x;
+            }
+        }
+    }
+    
+    // Scan RIGHT from center for edge (shadow)
+    let rightEdge = null;
+    let maxRightGradient = 20;
+    
+    for (let x = centerX; x < regionWidth - 10; x++) {
+        let gradientSum = 0;
+        let count = 0;
+        
+        for (let y = Math.floor(centerY - 20); y < Math.floor(centerY + 20); y++) {
+            if (y >= 0 && y < regionHeight) {
+                const gradient = gradients[y * regionWidth + x];
+                if (gradient > 15) {
+                    gradientSum += gradient;
+                    count++;
+                }
             }
         }
         
-        // Scan RIGHT from fingertip until we hit edge
-        let rightEdge = tipX;
-        for (let x = tipX; x <= Math.min(imgWidth - 1, tipX + 60); x++) {
-            const idx = (scanY * imgWidth + x) * 4;
-            const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-            
-            // Stop if brightness drops below threshold (hit nail edge)
-            if (brightness < edgeThreshold) {
-                rightEdge = x - 1; // Edge is one pixel back
-                break;
+        if (count > 5) {
+            const avgGradient = gradientSum / count;
+            if (avgGradient > maxRightGradient) {
+                maxRightGradient = avgGradient;
+                rightEdge = x;
             }
         }
-        
-        const width = rightEdge - leftEdge + 1;
-        if (width > maxWidth && width > 3) { // Must be at least 3px wide (was 5)
-            maxWidth = width;
-            console.log(`  Scan y=${scanY}: L=${leftEdge} R=${rightEdge} W=${width}px`);
+    }
+    
+    if (leftEdge && rightEdge && rightEdge > leftEdge) {
+        const nailWidth = rightEdge - leftEdge;
+        console.log(`  ✅ Found shadow edges: L=${leftEdge} R=${rightEdge} W=${nailWidth}px`);
+        console.log(`     Edge strengths: L=${maxLeftGradient.toFixed(1)} R=${maxRightGradient.toFixed(1)}`);
+        return nailWidth;
+    }
+    
+    console.warn(`  ❌ Could not find clear shadow edges`);
+    return 0;
+}
+
+/**
+ * Compute image gradients using Sobel operator
+ * Finds edges/shadows in the image
+ */
+function computeGradients(data, imgWidth, startX, startY, endX, endY) {
+    const regionWidth = endX - startX;
+    const regionHeight = endY - startY;
+    const gradients = new Float32Array(regionWidth * regionHeight);
+    
+    // Sobel kernels for edge detection
+    const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+    const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+    
+    for (let y = 1; y < regionHeight - 1; y++) {
+        for (let x = 1; x < regionWidth - 1; x++) {
+            let gx = 0, gy = 0;
+            
+            // Apply Sobel operator
+            for (let ky = -1; ky <= 1; ky++) {
+                for (let kx = -1; kx <= 1; kx++) {
+                    const imgX = startX + x + kx;
+                    const imgY = startY + y + ky;
+                    const imgIdx = (imgY * imgWidth + imgX) * 4;
+                    
+                    // Convert to grayscale
+                    const gray = 0.299 * data[imgIdx] + 0.587 * data[imgIdx+1] + 0.114 * data[imgIdx+2];
+                    
+                    const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                    gx += gray * sobelX[kernelIdx];
+                    gy += gray * sobelY[kernelIdx];
+                }
+            }
+            
+            // Gradient magnitude
+            gradients[y * regionWidth + x] = Math.sqrt(gx * gx + gy * gy);
         }
     }
     
-    if (maxWidth === 0) {
-        console.warn(`  ⚠️ Could not find nail edges`);
-        return 0;
-    }
-    
-    console.log(`  📏 Measured nail width: ${maxWidth}px`);
-    return maxWidth;
+    return gradients;
 }
 
 /**
