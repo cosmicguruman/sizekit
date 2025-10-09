@@ -62,31 +62,9 @@ class CardDetector {
             this.blurred = new cv.Mat();
             cv.GaussianBlur(this.gray, this.blurred, new cv.Size(5, 5), 0);
             
-            // 3b. Apply adaptive thresholding to separate card from background
-            const adaptiveThresh = new cv.Mat();
-            cv.adaptiveThreshold(
-                this.blurred,
-                adaptiveThresh,
-                255,
-                cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv.THRESH_BINARY,
-                11,  // Block size
-                2    // Constant subtracted from mean
-            );
-            
-            // 3c. Combine with regular edges for robustness
+            // 4. Simple Canny edge detection (reliable for cards)
             this.edges = new cv.Mat();
-            cv.Canny(this.blurred, this.edges, 30, 100);
-            
-            // Merge adaptive threshold edges with Canny edges
-            cv.bitwise_or(this.edges, adaptiveThresh, this.edges);
-            
-            // 3d. Apply morphological operations to connect card edges
-            const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-            cv.morphologyEx(this.edges, this.edges, cv.MORPH_CLOSE, kernel);
-            
-            kernel.delete();
-            adaptiveThresh.delete();
+            cv.Canny(this.blurred, this.edges, 50, 150); // Back to more conservative thresholds
             
             // 5. Find contours
             const contours = new cv.MatVector();
@@ -295,16 +273,22 @@ class CardDetector {
      */
     _findCardRectangles(contours, imageData, guideRegion) {
         const rectangles = [];
+        
+        // Card-specific size constraints
         const minArea = guideRegion ? 
-            (guideRegion.width * guideRegion.height * 0.1) : // Much lower minimum (10%)
-            (imageData.width * imageData.height * 0.02); // Catch smaller cards
+            (guideRegion.width * guideRegion.height * 0.15) : // At least 15% of guide
+            (imageData.width * imageData.height * 0.03); // Or 3% of full image
+            
+        const maxArea = guideRegion ?
+            (guideRegion.width * guideRegion.height * 1.5) : // Max 150% of guide (reject huge objects)
+            (imageData.width * imageData.height * 0.4); // Or max 40% of full image (reject laptop screens)
         
         for (let i = 0; i < contours.size(); i++) {
             const contour = contours.get(i);
             const area = cv.contourArea(contour);
             
-            // Skip small contours
-            if (area < minArea) continue;
+            // Skip contours that are too small or too large (reject laptop screens)
+            if (area < minArea || area > maxArea) continue;
             
             // Approximate contour to polygon
             const perimeter = cv.arcLength(contour, true);
@@ -369,23 +353,35 @@ class CardDetector {
             const brightness = this._checkBrightness(rect.corners, imageData);
             const uniformity = this._checkUniformity(rect.corners, imageData);
             
-            // Cards should be reasonably bright (> 30%) and uniform (> 60%)
-            if (brightness > 0.3 && uniformity > 0.6) {
+            // More lenient filters: brightness > 20%, uniformity > 40%
+            // Accept anything that looks card-like
+            if (brightness > 0.2 && uniformity > 0.4) {
                 validCandidates.push({ rect, brightness, uniformity });
+            } else {
+                // Even if it doesn't pass, include it with lower score
+                validCandidates.push({ rect, brightness: brightness * 0.5, uniformity: uniformity * 0.5 });
             }
         }
         
         if (validCandidates.length === 0) {
-            // No candidates passed filtering, return largest anyway
+            // Fallback: return largest rectangle
             return rectangles[0];
         }
         
-        // Score candidates by brightness, uniformity, and if they're in guide
+        // Score candidates by size match, brightness, uniformity, position
         validCandidates.sort((a, b) => {
-            const scoreA = a.brightness * 0.3 + a.uniformity * 0.4 + 
-                          (guideRegion && this._isInsideGuide(a.rect.corners, guideRegion) ? 0.3 : 0);
-            const scoreB = b.brightness * 0.3 + b.uniformity * 0.4 + 
-                          (guideRegion && this._isInsideGuide(b.rect.corners, guideRegion) ? 0.3 : 0);
+            // Prefer card-sized objects (not too big, not too small)
+            const idealSize = guideRegion ? 
+                guideRegion.width * guideRegion.height * 0.7 : 
+                imageData.width * imageData.height * 0.1;
+            
+            const sizeScoreA = 1 - Math.abs(a.rect.area - idealSize) / idealSize;
+            const sizeScoreB = 1 - Math.abs(b.rect.area - idealSize) / idealSize;
+            
+            const scoreA = sizeScoreA * 0.4 + a.brightness * 0.2 + a.uniformity * 0.2 + 
+                          (guideRegion && this._isInsideGuide(a.rect.corners, guideRegion) ? 0.2 : 0);
+            const scoreB = sizeScoreB * 0.4 + b.brightness * 0.2 + b.uniformity * 0.2 + 
+                          (guideRegion && this._isInsideGuide(b.rect.corners, guideRegion) ? 0.2 : 0);
             return scoreB - scoreA;
         });
         
