@@ -37,7 +37,8 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none;
+    pointer-events: none; /* Will be enabled in JS for tap events */
+    touch-action: none; /* Prevent scrolling/zooming on touch */
 }
 
 /* Debug console - bottom of screen */
@@ -74,39 +75,57 @@ body {
     color: #ff0;
 }
 
-/* Guide rectangle - helps user position card */
-#guide-rectangle {
+/* Instructions overlay - top of screen */
+#instructions {
     position: fixed;
-    top: 15%;
+    top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    width: 70%;
-    max-width: 500px;
-    aspect-ratio: 1.586; /* Credit card aspect ratio */
-    border: 3px dashed rgba(255, 255, 255, 0.8);
-    border-radius: 8px;
-    pointer-events: none;
+    text-align: center;
     z-index: 999;
-    transition: all 0.3s ease;
+    pointer-events: none;
 }
 
-#guide-rectangle.locked {
-    border-color: rgb(0, 255, 0);
-    border-style: solid;
-    box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
-}
-
-#guide-text {
-    position: absolute;
-    top: -35px;
-    left: 50%;
-    transform: translateX(-50%);
+#instruction-text {
     color: white;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 15px 25px;
+    border-radius: 10px;
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+#instruction-detail {
+    color: #0f0;
     background: rgba(0, 0, 0, 0.7);
-    padding: 5px 15px;
-    border-radius: 5px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+#reset-btn {
+    background: rgba(255, 50, 50, 0.9);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
     font-size: 14px;
-    white-space: nowrap;
+    font-weight: bold;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background 0.2s;
+}
+
+#reset-btn:hover {
+    background: rgba(255, 80, 80, 1);
+}
+
+#reset-btn:active {
+    background: rgba(200, 40, 40, 1);
 }
 
 /* Loading indicator */

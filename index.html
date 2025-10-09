@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SizeKit - Card Detection</title>
+    <title>SizeKit - Manual Calibration</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,9 +13,11 @@
         <canvas id="overlay-canvas"></canvas>
     </div>
 
-    <!-- Guide Rectangle -->
-    <div id="guide-rectangle">
-        <div id="guide-text">Position card here</div>
+    <!-- Instructions Overlay -->
+    <div id="instructions">
+        <div id="instruction-text">Tap the 4 corners of your credit card</div>
+        <div id="instruction-detail">Start with TOP-LEFT corner</div>
+        <button id="reset-btn" style="display: none;">Reset Corners</button>
     </div>
 
     <!-- Debug Console (bottom) -->
@@ -23,20 +25,23 @@
         <div class="debug-line">Initializing...</div>
     </div>
 
-    <!-- Debug Toggle (top right) -->
-    <button id="debug-toggle" style="position: fixed; top: 10px; right: 10px; z-index: 1001; background: rgba(0,0,0,0.7); color: #0f0; border: 1px solid #0f0; padding: 8px 12px; border-radius: 5px; font-size: 12px;">
-        DEBUG: OFF
-    </button>
-
     <!-- Load modules -->
     <script src="modules/camera.js"></script>
     <script src="modules/cardDetector.js"></script>
 
     <!-- Main app logic -->
     <script>
+        // Credit card standard dimensions (ISO/IEC 7810 ID-1)
+        const CARD_WIDTH_MM = 85.6;
+        const CARD_HEIGHT_MM = 53.98;
+
         let debugLines = [];
-        const maxDebugLines = 8;
-        let debugMode = false;
+        const maxDebugLines = 6;
+        let corners = [];  // Stores the 4 tapped corners
+        let isCalibrated = false;
+        let pixelsPerMM = null;
+
+        const cornerNames = ['TOP-LEFT', 'TOP-RIGHT', 'BOTTOM-RIGHT', 'BOTTOM-LEFT'];
 
         /**
          * Add debug message to console
@@ -45,12 +50,10 @@
             const timestamp = new Date().toLocaleTimeString();
             debugLines.push({ time: timestamp, msg: message, type: type });
             
-            // Keep only recent lines
             if (debugLines.length > maxDebugLines) {
                 debugLines.shift();
             }
             
-            // Update display
             const consoleEl = document.getElementById('debug-console');
             consoleEl.innerHTML = debugLines.map(line => {
                 const className = line.type === 'error' ? 'debug-error' : 
@@ -61,142 +64,206 @@
         }
 
         /**
+         * Update instruction text
+         */
+        function updateInstructions() {
+            const textEl = document.getElementById('instruction-text');
+            const detailEl = document.getElementById('instruction-detail');
+            const resetBtn = document.getElementById('reset-btn');
+
+            if (corners.length < 4) {
+                textEl.textContent = `Tap corner ${corners.length + 1} of 4`;
+                detailEl.textContent = cornerNames[corners.length];
+                resetBtn.style.display = corners.length > 0 ? 'block' : 'none';
+            } else {
+                textEl.textContent = '✓ Calibrated!';
+                detailEl.textContent = `Scale: ${pixelsPerMM.toFixed(2)} px/mm`;
+                resetBtn.style.display = 'block';
+            }
+        }
+
+        /**
+         * Reset calibration
+         */
+        function resetCorners() {
+            corners = [];
+            isCalibrated = false;
+            pixelsPerMM = null;
+            updateInstructions();
+            addDebug('Calibration reset', 'warning');
+        }
+
+        /**
+         * Handle tap/click on canvas
+         */
+        function handleTap(event) {
+            if (corners.length >= 4) return; // Already calibrated
+
+            const canvas = document.getElementById('overlay-canvas');
+            const rect = canvas.getBoundingClientRect();
+            
+            // Get tap position in canvas coordinates
+            let clientX, clientY;
+            if (event.type === 'touchstart' || event.type === 'touchend') {
+                clientX = event.touches[0]?.clientX || event.changedTouches[0]?.clientX;
+                clientY = event.touches[0]?.clientY || event.changedTouches[0]?.clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+
+            // Convert from screen coordinates to canvas coordinates
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            const x = (clientX - rect.left) * scaleX;
+            const y = (clientY - rect.top) * scaleY;
+
+            corners.push({ x, y });
+            addDebug(`Corner ${corners.length}: (${x.toFixed(0)}, ${y.toFixed(0)})`, 'success');
+
+            // If we have all 4 corners, calculate scale
+            if (corners.length === 4) {
+                calculateScale();
+                isCalibrated = true;
+            }
+
+            updateInstructions();
+        }
+
+        /**
+         * Calculate pixels per millimeter from corners
+         */
+        function calculateScale() {
+            // Calculate average width (top edge + bottom edge)
+            const topWidth = Math.sqrt(
+                Math.pow(corners[1].x - corners[0].x, 2) + 
+                Math.pow(corners[1].y - corners[0].y, 2)
+            );
+            const bottomWidth = Math.sqrt(
+                Math.pow(corners[2].x - corners[3].x, 2) + 
+                Math.pow(corners[2].y - corners[3].y, 2)
+            );
+            const avgWidthPx = (topWidth + bottomWidth) / 2;
+
+            // Calculate average height (left edge + right edge)
+            const leftHeight = Math.sqrt(
+                Math.pow(corners[3].x - corners[0].x, 2) + 
+                Math.pow(corners[3].y - corners[0].y, 2)
+            );
+            const rightHeight = Math.sqrt(
+                Math.pow(corners[2].x - corners[1].x, 2) + 
+                Math.pow(corners[2].y - corners[1].y, 2)
+            );
+            const avgHeightPx = (leftHeight + rightHeight) / 2;
+
+            // Calculate scale from both dimensions (average them)
+            const scaleFromWidth = avgWidthPx / CARD_WIDTH_MM;
+            const scaleFromHeight = avgHeightPx / CARD_HEIGHT_MM;
+            pixelsPerMM = (scaleFromWidth + scaleFromHeight) / 2;
+
+            addDebug(`Width: ${avgWidthPx.toFixed(1)}px = ${CARD_WIDTH_MM}mm`, 'info');
+            addDebug(`Height: ${avgHeightPx.toFixed(1)}px = ${CARD_HEIGHT_MM}mm`, 'info');
+            addDebug(`✓ Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
+        }
+
+        /**
+         * Draw overlay (corners + green fill)
+         */
+        function drawOverlay(ctx) {
+            // Clear canvas
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+            // Draw video frame
+            const video = document.getElementById('video');
+            ctx.drawImage(video, 0, 0, ctx.canvas.width, ctx.canvas.height);
+
+            // Draw corners
+            corners.forEach((corner, index) => {
+                // Draw dot
+                ctx.beginPath();
+                ctx.arc(corner.x, corner.y, 12, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Draw number
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText((index + 1).toString(), corner.x, corner.y);
+            });
+
+            // If calibrated, draw green overlay
+            if (corners.length === 4) {
+                // Draw semi-transparent green fill
+                ctx.beginPath();
+                ctx.moveTo(corners[0].x, corners[0].y);
+                ctx.lineTo(corners[1].x, corners[1].y);
+                ctx.lineTo(corners[2].x, corners[2].y);
+                ctx.lineTo(corners[3].x, corners[3].y);
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+                ctx.fill();
+
+                // Draw green outline
+                ctx.strokeStyle = 'rgb(0, 255, 0)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+        }
+
+        /**
          * Initialize and run app
          */
         async function init() {
             try {
-                addDebug('Starting camera initialization...', 'info');
+                addDebug('Starting camera...', 'info');
                 
                 const camera = new Camera();
-                const cardDetector = new CardDetector();
-                
                 const video = document.getElementById('video');
                 const canvas = document.getElementById('overlay-canvas');
-                const guideEl = document.getElementById('guide-rectangle');
-                const debugToggle = document.getElementById('debug-toggle');
                 const ctx = canvas.getContext('2d', {
                     willReadFrequently: true
                 });
 
-                // Debug toggle
-                debugToggle.addEventListener('click', () => {
-                    debugMode = !debugMode;
-                    debugToggle.textContent = `DEBUG: ${debugMode ? 'ON' : 'OFF'}`;
-                    debugToggle.style.background = debugMode ? 'rgba(0,255,0,0.3)' : 'rgba(0,0,0,0.7)';
-                    cardDetector.setDebugMode(debugMode);
-                    addDebug(`Debug visualization ${debugMode ? 'enabled' : 'disabled'}`, 'info');
-                });
-
                 // Initialize camera
                 await camera.initialize(video, canvas);
-                addDebug('✓ Camera initialized', 'success');
+                addDebug('✓ Camera ready', 'success');
+                addDebug('Tap 4 corners of credit card', 'info');
 
-                // Get guide rectangle bounds (in canvas coordinates)
-                function getGuideRegion() {
-                    const guideRect = guideEl.getBoundingClientRect();
-                    const canvasRect = canvas.getBoundingClientRect();
-                    
-                    // Convert from screen coordinates to canvas coordinates
-                    const scaleX = canvas.width / canvasRect.width;
-                    const scaleY = canvas.height / canvasRect.height;
-                    
-                    return {
-                        x: (guideRect.left - canvasRect.left) * scaleX,
-                        y: (guideRect.top - canvasRect.top) * scaleY,
-                        width: guideRect.width * scaleX,
-                        height: guideRect.height * scaleY
-                    };
-                }
+                // Enable canvas interactions
+                canvas.style.pointerEvents = 'auto';
 
-                // Detection loop
-                let frameCount = 0;
-                let lastFpsUpdate = performance.now();
-                let fps = 0;
-                let lastDetectionState = 'scanning'; // Track state to reduce debug spam
+                // Listen for taps (touch and click)
+                canvas.addEventListener('click', handleTap);
+                canvas.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    handleTap(e);
+                });
 
-                const processFrame = async () => {
-                    try {
-                        frameCount++;
-                        
-                        // Calculate FPS every second
-                        const now = performance.now();
-                        if (now - lastFpsUpdate > 1000) {
-                            fps = frameCount;
-                            frameCount = 0;
-                            lastFpsUpdate = now;
-                        }
+                // Reset button
+                document.getElementById('reset-btn').addEventListener('click', resetCorners);
 
-                        // Clear canvas
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        
-                        // Draw video frame to get image data
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        
-                        // Get guide region
-                        const guideRegion = getGuideRegion();
-                        
-                        // Detect card (only within guide region)
-                        const detection = cardDetector.detectCard(imageData, guideRegion);
-                        
-                        // Draw overlay
-                        cardDetector.drawOverlay(ctx, detection);
-                        
-                        // Update guide visual
-                        if (detection && cardDetector.isStable()) {
-                            guideEl.classList.add('locked');
-                        } else {
-                            guideEl.classList.remove('locked');
-                        }
-                        
-                        // Update debug info (only on state changes to reduce spam)
-                        const wasLocked = lastDetectionState === 'locked';
-                        const isNowLocked = detection && cardDetector.isStable();
-                        
-                        if (isNowLocked && !wasLocked) {
-                            // Just locked!
-                            addDebug(`✓ Card LOCKED | ${fps} FPS`, 'success');
-                            lastDetectionState = 'locked';
-                        } else if (detection && !isNowLocked) {
-                            // Detecting but not stable yet
-                            if (lastDetectionState !== 'detecting') {
-                                addDebug(`⚠ Card detected, stabilizing...`, 'warning');
-                                lastDetectionState = 'detecting';
-                            }
-                        } else if (!detection) {
-                            // No detection
-                            if (frameCount % 30 === 0 && lastDetectionState !== 'scanning') {
-                                addDebug(`Scanning for card... | ${fps} FPS`, 'info');
-                                lastDetectionState = 'scanning';
-                            }
-                        }
-
-                    } catch (error) {
-                        addDebug(`Error: ${error.message}`, 'error');
-                        console.error('Frame processing error:', error);
-                    }
-                };
-
-                // Use requestAnimationFrame for smooth loop
+                // Animation loop - just draws overlay
                 const animate = () => {
-                    processFrame();
+                    drawOverlay(ctx);
                     requestAnimationFrame(animate);
                 };
                 
-                addDebug('Starting detection loop...', 'success');
                 animate();
 
             } catch (error) {
                 console.error('Initialization error:', error);
-                addDebug(`FATAL ERROR: ${error.message}`, 'error');
+                addDebug(`ERROR: ${error.message}`, 'error');
                 
-                // Show helpful error message
                 if (error.name === 'NotAllowedError' || error.message.includes('permission')) {
-                    addDebug('Camera access denied. Please allow camera access in browser settings.', 'error');
+                    addDebug('Camera access denied', 'error');
                 } else if (!window.isSecureContext) {
-                    addDebug('Requires HTTPS. Make sure you\'re using https:// URL.', 'error');
-                } else {
-                    addDebug('Check console for details. Try refreshing the page.', 'error');
+                    addDebug('Requires HTTPS', 'error');
                 }
             }
         }
