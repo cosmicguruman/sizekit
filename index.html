@@ -130,6 +130,7 @@
             if (cardDetector) {
                 cardDetector.lastDetection = null;
                 cardDetector.smoothedCorners = null;
+                cardDetector.unlock(); // Unlock from card
             }
             updateInstructions();
             addDebug('Reset - tap card to detect', 'warning');
@@ -340,7 +341,8 @@
                             if (pixelsPerMM && pixelsPerMM > 2 && pixelsPerMM < 15) {
                                 // SUCCESS - card detected!
                                 currentState = STATE.LOCKED;
-                                addDebug(`✓ Detected! Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
+                                cardDetector.lock(detection); // Lock onto this card
+                                addDebug(`✓ Detected & Locked! Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
                                 updateInstructions();
                             }
                         }
