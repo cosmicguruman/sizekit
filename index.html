@@ -248,18 +248,10 @@
                     break;
 
                 case STATE.DETECTING:
-                    // Show search region "spotlight"
+                    // Show tap point and search region (simple)
                     if (tapPoint) {
-                        const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
-                        
-                        // Dim everything OUTSIDE the search region
-                        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                        ctx.fillRect(0, 0, canvas.width, searchRegion.y); // Top
-                        ctx.fillRect(0, searchRegion.y, searchRegion.x, searchRegion.height); // Left
-                        ctx.fillRect(searchRegion.x + searchRegion.width, searchRegion.y, canvas.width - (searchRegion.x + searchRegion.width), searchRegion.height); // Right
-                        ctx.fillRect(0, searchRegion.y + searchRegion.height, canvas.width, canvas.height - (searchRegion.y + searchRegion.height)); // Bottom
-                        
                         // Draw search region border (yellow box)
+                        const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
                         ctx.strokeStyle = '#FFC107';
                         ctx.lineWidth = 3;
                         ctx.strokeRect(searchRegion.x, searchRegion.y, searchRegion.width, searchRegion.height);
@@ -274,7 +266,7 @@
                         ctx.stroke();
                     }
                     // Show detected card if available
-                    if (cardDetector.lastDetection) {
+                    if (cardDetector && cardDetector.lastDetection) {
                         cardDetector.drawOverlay(ctx, cardDetector.lastDetection);
                     }
                     break;
@@ -330,68 +322,92 @@
 
                 // Main processing loop
                 const processFrame = () => {
-                    // Handle detecting state
-                    if (currentState === STATE.DETECTING && tapPoint) {
-                        detectionAttempts++;
-                        
-                        // Get the search region around tap point
-                        const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
-                        
-                        // Get image data
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                        
-                        // Try to detect card in that region
-                        const detection = cardDetector.detectCard(imageData, searchRegion);
-                        
-                        // Log progress every 10 frames
-                        if (detectionAttempts % 10 === 0) {
-                            if (detection) {
-                                addDebug(`Detecting... (${detectionAttempts}/${MAX_DETECTION_ATTEMPTS}) - Found candidate`, 'info');
-                            } else {
-                                addDebug(`Detecting... (${detectionAttempts}/${MAX_DETECTION_ATTEMPTS}) - Scanning`, 'info');
-                            }
-                        }
-                        
-                        if (detection && cardDetector.isStable() && detection.corners) {
-                            // Check scale is reasonable
-                            calculateScale(detection.corners);
+                    try {
+                        // Handle detecting state
+                        if (currentState === STATE.DETECTING && tapPoint) {
+                            detectionAttempts++;
                             
-                            if (pixelsPerMM && pixelsPerMM > 2 && pixelsPerMM < 15) {
-                                // SUCCESS - card detected!
-                                currentState = STATE.LOCKED;
-                                cardDetector.lock(detection); // Lock onto this card
-                                addDebug(`✓ Detected & Locked! Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
+                            // Get the search region around tap point
+                            const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
+                            
+                            // Get image data
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                            
+                            // Try to detect card in that region
+                            try {
+                                const detection = cardDetector.detectCard(imageData, searchRegion);
+                                
+                                // Log progress every 10 frames
+                                if (detectionAttempts % 10 === 0) {
+                                    if (detection) {
+                                        addDebug(`Detecting... (${detectionAttempts}/${MAX_DETECTION_ATTEMPTS}) - Found candidate`, 'info');
+                                    } else {
+                                        addDebug(`Detecting... (${detectionAttempts}/${MAX_DETECTION_ATTEMPTS}) - Scanning`, 'info');
+                                    }
+                                }
+                                
+                                if (detection && cardDetector.isStable() && detection.corners) {
+                                    // Check scale is reasonable
+                                    calculateScale(detection.corners);
+                                    
+                                    if (pixelsPerMM && pixelsPerMM > 2 && pixelsPerMM < 15) {
+                                        // SUCCESS - card detected!
+                                        currentState = STATE.LOCKED;
+                                        cardDetector.lock(detection); // Lock onto this card
+                                        addDebug(`✓ Detected & Locked! Scale: ${pixelsPerMM.toFixed(2)} px/mm`, 'success');
+                                        updateInstructions();
+                                    }
+                                }
+                            } catch (detectionError) {
+                                console.error('Detection error:', detectionError);
+                                addDebug('❌ Detection error - tap again', 'error');
+                                currentState = STATE.WAITING;
+                                tapPoint = null;
+                                updateInstructions();
+                            }
+                            
+                            // Check if we've exceeded max attempts
+                            if (detectionAttempts >= MAX_DETECTION_ATTEMPTS) {
+                                currentState = STATE.WAITING;
+                                tapPoint = null;
+                                addDebug('❌ Detection timeout - tap again', 'error');
                                 updateInstructions();
                             }
                         }
                         
-                        // Check if we've exceeded max attempts
-                        if (detectionAttempts >= MAX_DETECTION_ATTEMPTS) {
-                            currentState = STATE.WAITING;
-                            tapPoint = null;
-                            addDebug('❌ Detection timeout - tap again', 'error');
-                            updateInstructions();
+                        // Handle locked state - keep tracking
+                        if (currentState === STATE.LOCKED && tapPoint) {
+                            try {
+                                const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
+                                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                
+                                const detection = cardDetector.detectCard(imageData, searchRegion);
+                                
+                                if (detection && detection.corners) {
+                                    // Update scale
+                                    calculateScale(detection.corners);
+                                    updateInstructions();
+                                }
+                            } catch (trackingError) {
+                                console.error('Tracking error:', trackingError);
+                                // Lost tracking, go back to waiting
+                                currentState = STATE.WAITING;
+                                tapPoint = null;
+                                cardDetector.unlock();
+                                addDebug('❌ Lost tracking - tap again', 'error');
+                                updateInstructions();
+                            }
                         }
-                    }
-                    
-                    // Handle locked state - keep tracking
-                    if (currentState === STATE.LOCKED && tapPoint) {
-                        const searchRegion = getSearchRegion(tapPoint.x, tapPoint.y, canvas.width, canvas.height);
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                         
-                        const detection = cardDetector.detectCard(imageData, searchRegion);
+                        // Draw overlay
+                        drawOverlay(ctx);
                         
-                        if (detection && detection.corners) {
-                            // Update scale
-                            calculateScale(detection.corners);
-                            updateInstructions();
-                        }
+                    } catch (error) {
+                        console.error('Frame processing error:', error);
+                        addDebug('❌ Processing error', 'error');
                     }
-                    
-                    // Draw overlay
-                    drawOverlay(ctx);
                     
                     requestAnimationFrame(processFrame);
                 };
