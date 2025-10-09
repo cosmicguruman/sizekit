@@ -3,684 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SizeKit - Nail Measurement</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #000;
-            color: #fff;
-            overflow: hidden;
-        }
-        
-        /* Loading Screen */
-        #loading-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: #000;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-        }
-        
-        .spinner {
-            width: 60px;
-            height: 60px;
-            border: 5px solid #333;
-            border-top-color: #4CAF50;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 25px;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        #loading-text {
-            text-align: center;
-            font-size: 16px;
-            color: #aaa;
-            line-height: 1.6;
-        }
-        
-        /* Camera Screen */
-        #camera-screen {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            display: none;
-        }
-        
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-        
-        /* Instructions */
-        #instructions {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.85);
-            padding: 20px;
-            border-radius: 12px;
-            z-index: 10;
-        }
-        
-        #step-title {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 12px;
-            color: #4CAF50;
-        }
-        
-        #step-description {
-            font-size: 15px;
-            line-height: 1.6;
-            color: #ccc;
-            margin-bottom: 15px;
-        }
-        
-        /* Detection Status */
-        #detection-status {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .status-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 14px;
-        }
-        
-        .status-icon {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-        }
-        
-        .status-icon.pending {
-            background: #666;
-            color: #999;
-        }
-        
-        .status-icon.detected {
-            background: #4CAF50;
-            color: #fff;
-        }
-        
-        .status-icon.missing {
-            background: #f44336;
-            color: #fff;
-        }
-        
-        /* Capture Button */
-        #capture-btn {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: #fff;
-            border: 5px solid #000;
-            box-shadow: 0 0 0 3px #fff, 0 8px 20px rgba(0,0,0,0.3);
-            cursor: pointer;
-            transition: all 0.2s;
-            z-index: 10;
-        }
-        
-        #capture-btn:disabled {
-            background: #666;
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-        
-        #capture-btn:not(:disabled):active {
-            transform: translateX(-50%) scale(0.95);
-        }
-        
-        /* Results Screen */
-        #results-screen {
-            display: none;
-            width: 100vw;
-            height: 100vh;
-            overflow-y: auto;
-            padding: 20px;
-            background: #1a1a1a;
-        }
-        
-        h2 {
-            font-size: 24px;
-            margin-bottom: 20px;
-            color: #4CAF50;
-        }
-        
-        .finger-card {
-            background: #2a2a2a;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 15px;
-        }
-        
-        .finger-name {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #fff;
-        }
-        
-        .measurement-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-        
-        .measurement-item {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .measurement-label {
-            font-size: 12px;
-            color: #999;
-            margin-bottom: 4px;
-        }
-        
-        .measurement-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #4CAF50;
-        }
-        
-        .size-value {
-            font-size: 28px;
-            color: #fff;
-        }
-        
-        button {
-            width: 100%;
-            padding: 16px;
-            margin-top: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .btn-primary {
-            background: #4CAF50;
-            color: white;
-        }
-        
-        .btn-secondary {
-            background: #666;
-            color: white;
-        }
-        
-        button:active {
-            transform: scale(0.98);
-        }
-        
-        .error-banner {
-            background: #f44336;
-            color: white;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            font-size: 14px;
-        }
-        
-        .hidden {
-            display: none !important;
-        }
-    </style>
+    <title>SizeKit - Card Detection</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- Loading Screen -->
-    <div id="loading-screen">
-        <div class="spinner"></div>
-        <div id="loading-text">Loading AI models...<br><small>This may take 30-60 seconds</small></div>
-    </div>
-
     <!-- Camera Screen -->
     <div id="camera-screen">
-        <video id="video" autoplay playsinline></video>
+        <video id="video" autoplay playsinline muted></video>
         <canvas id="overlay-canvas"></canvas>
-        
-        <div id="instructions">
-            <div id="step-title">Step 1: Four Fingers</div>
-            <div id="step-description">Place your credit card flat in view. Spread your 4 fingers (index, middle, ring, pinky) next to it.</div>
-            <div id="detection-status"></div>
-        </div>
-        
-        <button id="capture-btn" disabled></button>
     </div>
 
-    <!-- Results Screen -->
-    <div id="results-screen">
-        <h2>✅ Measurements Complete</h2>
-        <div id="results-container"></div>
-        <button class="btn-secondary" id="restart-btn">🔄 Start Over</button>
+    <!-- Debug Console (bottom) -->
+    <div id="debug-console">
+        <div class="debug-line">Initializing...</div>
     </div>
 
-    <!-- TensorFlow.js and HandPose -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
-    <script src="detection.js"></script>
+    <!-- Load modules -->
+    <script src="modules/camera.js"></script>
+    <script src="modules/cardDetector.js"></script>
 
+    <!-- Main app logic -->
     <script>
-        // === UI Elements ===
-        const loadingScreen = document.getElementById('loading-screen');
-        const loadingText = document.getElementById('loading-text');
-        const cameraScreen = document.getElementById('camera-screen');
-        const resultsScreen = document.getElementById('results-screen');
-        const video = document.getElementById('video');
-        const overlayCanvas = document.getElementById('overlay-canvas');
-        const overlayCtx = overlayCanvas.getContext('2d');
-        const captureBtn = document.getElementById('capture-btn');
-        const restartBtn = document.getElementById('restart-btn');
-        const stepTitle = document.getElementById('step-title');
-        const stepDescription = document.getElementById('step-description');
-        const detectionStatus = document.getElementById('detection-status');
-        const resultsContainer = document.getElementById('results-container');
+        let debugLines = [];
+        const maxDebugLines = 8;
 
-        // === State ===
-        let stream = null;
-        let currentStep = 1; // 1 = four fingers, 2 = thumb
-        let detectionInterval = null;
-        let measurements = {
-            index: null,
-            middle: null,
-            ring: null,
-            pinky: null,
-            thumb: null
-        };
-        let currentDetection = {
-            card: false,
-            index: false,
-            middle: false,
-            ring: false,
-            pinky: false,
-            thumb: false
-        };
-        
-        // Card detection stabilization
-        // Real-time detection - no locking or history
-
-        // === Initialize ===
-        async function init() {
-            try {
-                loadingText.innerHTML = 'Step 1/3: Starting camera...<br><small>Allow camera access</small>';
-                
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'environment',
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    }
-                });
-                video.srcObject = stream;
-
-                // Wait for video to be ready
-                await new Promise(resolve => {
-                    video.onloadedmetadata = () => {
-                        overlayCanvas.width = video.videoWidth;
-                        overlayCanvas.height = video.videoHeight;
-                        resolve();
-                    };
-                });
-
-                loadingText.innerHTML = 'Step 2/3: Loading TensorFlow.js...';
-                await new Promise(resolve => setTimeout(resolve, 500));
-
-                loadingText.innerHTML = 'Step 3/3: Loading HandPose model...<br><small>30-60 seconds on mobile</small>';
-                await SizeKitDetection.loadHandposeModel();
-
-                // Start app
-                loadingScreen.classList.add('hidden');
-                cameraScreen.style.display = 'block';
-                startDetection();
-                
-            } catch (error) {
-                loadingText.innerHTML = `❌ Error: ${error.message}<br><br>Please refresh and try again`;
-                console.error('Init error:', error);
-            }
-        }
-
-        // === Real-time Detection ===
-        function startDetection() {
-            detectionInterval = setInterval(async () => {
-                await detectFrame();
-            }, 500); // Check every 500ms
-        }
-
-        async function detectFrame() {
-            try {
-                // Capture current frame
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-
-                // Detect credit card (REAL-TIME, NO LOCKING)
-                let cardDetected = false;
-                let referenceData = null;
-                
-                // Detect card fresh every frame
-                try {
-                    referenceData = await SizeKitDetection.detectReferenceObject({ dataUrl });
-                    cardDetected = true;
-                    currentDetection.card = true;
-                    
-                    console.log(`📦 Card detected: ${referenceData.boundingBox.width}x${referenceData.boundingBox.height}px, Scale: ${referenceData.pixelsPerMm.toFixed(2)} px/mm`);
-                } catch (e) {
-                    currentDetection.card = false;
-                    console.warn('⚠️ No card detected this frame');
-                }
-
-                // Detect hand and nails
-                let nailsDetected = { index: false, middle: false, ring: false, pinky: false, thumb: false };
-                let handData = null;
-                if (cardDetected) {
-                    try {
-                        // Only detect fingers relevant to current step
-                        const fingersToDetect = currentStep === 1 
-                            ? ['Index', 'Middle', 'Ring', 'Pinky']  // Step 1: 4 fingers
-                            : ['Thumb'];  // Step 2: thumb only
-                        
-                        handData = await SizeKitDetection.detectHandAndNails({ dataUrl }, referenceData, fingersToDetect);
-                        
-                        // Check which nails were detected
-                        handData.nails.forEach(nail => {
-                            if (nail.width.pixels > 0) {
-                                nailsDetected[nail.finger.toLowerCase()] = true;
-                            }
-                        });
-                    } catch (e) {
-                        // No hand detected
-                        console.error('Hand detection failed:', e.message);
-                    }
-                }
-
-                // Update current detection state
-                Object.assign(currentDetection, nailsDetected);
-
-                // Update UI with visual overlays
-                updateDetectionUI();
-                drawOverlay(cardDetected ? referenceData : null, handData);
-
-                // Check if we can proceed
-                checkReadyToCapture();
-
-            } catch (error) {
-                console.error('Detection error:', error);
-            }
-        }
-
-        // === Update Detection Status UI ===
-        function updateDetectionUI() {
-            const requiredItems = currentStep === 1 
-                ? ['card', 'index', 'middle', 'ring', 'pinky']
-                : ['card', 'thumb'];
-
-            const statusHTML = requiredItems.map(item => {
-                const label = item === 'card' ? '💳 Credit Card' : `${item.charAt(0).toUpperCase() + item.slice(1)} Finger`;
-                const detected = currentDetection[item];
-                const iconClass = detected ? 'detected' : 'missing';
-                const icon = detected ? '✓' : '✗';
-                
-                return `
-                    <div class="status-item">
-                        <div class="status-icon ${iconClass}">${icon}</div>
-                        <span>${label}</span>
-                    </div>
-                `;
-            }).join('');
-
-            detectionStatus.innerHTML = statusHTML;
-        }
-
-        // === Draw Overlay ===
-        let lastHandData = null; // Store last hand detection for visualization
-        
-        function drawOverlay(referenceData, handData = null) {
-            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-            // Draw credit card box
-            if (referenceData) {
-                const box = referenceData.boundingBox;
-                overlayCtx.strokeStyle = '#4CAF50';
-                overlayCtx.lineWidth = 6;
-                overlayCtx.strokeRect(box.x, box.y, box.width, box.height);
-                
-                overlayCtx.fillStyle = '#4CAF50';
-                overlayCtx.font = 'bold 28px Arial';
-                overlayCtx.fillText('✓ CARD', box.x + 10, box.y + 40);
-                
-                // Show scale
-                overlayCtx.fillStyle = 'rgba(76, 175, 80, 0.8)';
-                overlayCtx.fillRect(box.x, box.y + box.height + 5, 200, 30);
-                overlayCtx.fillStyle = '#fff';
-                overlayCtx.font = '16px Arial';
-                overlayCtx.fillText(`Scale: ${referenceData.pixelsPerMm.toFixed(2)} px/mm`, box.x + 5, box.y + box.height + 25);
+        /**
+         * Add debug message to console
+         */
+        function addDebug(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            debugLines.push({ time: timestamp, msg: message, type: type });
+            
+            // Keep only recent lines
+            if (debugLines.length > maxDebugLines) {
+                debugLines.shift();
             }
             
-            // Draw hand landmarks and nail detection zones
-            if (handData || lastHandData) {
-                const data = handData || lastHandData;
-                if (handData) lastHandData = handData; // Update stored data
-                
-                // Draw fingertip dots
-                data.nails.forEach((nail, idx) => {
-                    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8'];
-                    const color = colors[idx];
-                    
-                    // Draw fingertip circle
-                    overlayCtx.fillStyle = color;
-                    overlayCtx.beginPath();
-                    overlayCtx.arc(nail.tip.x, nail.tip.y, 8, 0, 2 * Math.PI);
-                    overlayCtx.fill();
-                    
-                    // Draw finger label
-                    overlayCtx.fillStyle = color;
-                    overlayCtx.font = 'bold 14px Arial';
-                    overlayCtx.fillText(nail.finger, nail.tip.x + 12, nail.tip.y - 12);
-                    
-                    // Draw measurement zone (horizontal lines where we scan)
-                    if (nail.width.pixels > 0) {
-                        // Draw scan area
-                        overlayCtx.strokeStyle = color;
-                        overlayCtx.lineWidth = 2;
-                        overlayCtx.globalAlpha = 0.5;
-                        
-                        // Draw multiple scan lines
-                        for (let offset = -14; offset <= 14; offset += 2) {
-                            overlayCtx.beginPath();
-                            overlayCtx.moveTo(nail.tip.x - 60, nail.tip.y + offset);
-                            overlayCtx.lineTo(nail.tip.x + 60, nail.tip.y + offset);
-                            overlayCtx.stroke();
-                        }
-                        
-                        overlayCtx.globalAlpha = 1.0;
-                        
-                        // Draw detected width as a bar
-                        const halfWidth = nail.width.pixels / 2;
-                        overlayCtx.strokeStyle = color;
-                        overlayCtx.lineWidth = 4;
-                        overlayCtx.beginPath();
-                        overlayCtx.moveTo(nail.tip.x - halfWidth, nail.tip.y);
-                        overlayCtx.lineTo(nail.tip.x + halfWidth, nail.tip.y);
-                        overlayCtx.stroke();
-                        
-                        // Draw edge markers
-                        overlayCtx.fillStyle = '#fff';
-                        overlayCtx.beginPath();
-                        overlayCtx.arc(nail.tip.x - halfWidth, nail.tip.y, 5, 0, 2 * Math.PI);
-                        overlayCtx.fill();
-                        overlayCtx.beginPath();
-                        overlayCtx.arc(nail.tip.x + halfWidth, nail.tip.y, 5, 0, 2 * Math.PI);
-                        overlayCtx.fill();
-                        
-                        // Show measurement
-                        overlayCtx.fillStyle = color;
-                        overlayCtx.font = 'bold 16px Arial';
-                        overlayCtx.fillText(`${nail.width.pixels.toFixed(0)}px`, nail.tip.x + halfWidth + 10, nail.tip.y + 5);
-                    } else {
-                        // Show X for failed detection
-                        overlayCtx.strokeStyle = '#f44336';
-                        overlayCtx.lineWidth = 3;
-                        overlayCtx.beginPath();
-                        overlayCtx.moveTo(nail.tip.x - 8, nail.tip.y - 8);
-                        overlayCtx.lineTo(nail.tip.x + 8, nail.tip.y + 8);
-                        overlayCtx.moveTo(nail.tip.x + 8, nail.tip.y - 8);
-                        overlayCtx.lineTo(nail.tip.x - 8, nail.tip.y + 8);
-                        overlayCtx.stroke();
-                    }
-                });
-            }
+            // Update display
+            const consoleEl = document.getElementById('debug-console');
+            consoleEl.innerHTML = debugLines.map(line => {
+                const className = line.type === 'error' ? 'debug-error' : 
+                                 line.type === 'success' ? 'debug-success' :
+                                 line.type === 'warning' ? 'debug-warning' : '';
+                return `<div class="debug-line ${className}">[${line.time}] ${line.msg}</div>`;
+            }).join('');
         }
 
-        // === Check if Ready to Capture ===
-        function checkReadyToCapture() {
-            const requiredItems = currentStep === 1
-                ? ['card', 'index', 'middle', 'ring', 'pinky']
-                : ['card', 'thumb'];
-
-            const allDetected = requiredItems.every(item => currentDetection[item]);
-            captureBtn.disabled = !allDetected;
-        }
-
-        // === Capture Photo ===
-        captureBtn.addEventListener('click', async () => {
-            captureBtn.disabled = true;
-            clearInterval(detectionInterval);
-
+        /**
+         * Initialize and run app
+         */
+        async function init() {
             try {
-                // Capture frame
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0);
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-
-                // Detect and measure
-                const fingersToDetect = currentStep === 1 
-                    ? ['Index', 'Middle', 'Ring', 'Pinky']  // Step 1: 4 fingers
-                    : ['Thumb'];  // Step 2: thumb only
+                addDebug('Starting camera initialization...', 'info');
                 
-                const referenceData = await SizeKitDetection.detectReferenceObject({ dataUrl });
-                const handData = await SizeKitDetection.detectHandAndNails({ dataUrl }, referenceData, fingersToDetect);
-                const nailMeasurements = SizeKitDetection.measureNails(handData, referenceData);
-
-                // Store measurements
-                nailMeasurements.forEach(nail => {
-                    const fingerName = nail.finger.toLowerCase();
-                    measurements[fingerName] = nail;
+                const camera = new Camera();
+                const cardDetector = new CardDetector();
+                
+                const video = document.getElementById('video');
+                const canvas = document.getElementById('overlay-canvas');
+                const ctx = canvas.getContext('2d', {
+                    willReadFrequently: true
                 });
 
-                // Move to next step or show results
-                if (currentStep === 1) {
-                    // Move to thumb capture
-                    currentStep = 2;
-                    stepTitle.textContent = 'Step 2: Thumb';
-                    stepDescription.textContent = 'Keep the credit card in view. Show your thumb next to it.';
-                    currentDetection = { card: false, thumb: false };
-                    updateDetectionUI();
-                    startDetection();
-                } else {
-                    // All done - show results
-                    showResults();
-                }
+                // Initialize camera
+                await camera.initialize(video, canvas);
+                addDebug('✓ Camera initialized', 'success');
+
+                // Detection loop
+                let frameCount = 0;
+                let lastFpsUpdate = performance.now();
+                let fps = 0;
+
+                const processFrame = async () => {
+                    try {
+                        frameCount++;
+                        
+                        // Calculate FPS every second
+                        const now = performance.now();
+                        if (now - lastFpsUpdate > 1000) {
+                            fps = frameCount;
+                            frameCount = 0;
+                            lastFpsUpdate = now;
+                        }
+
+                        // Clear canvas
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        
+                        // Draw video frame to get image data
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        
+                        // Detect card
+                        const detection = cardDetector.detectCard(imageData);
+                        
+                        // Draw overlay
+                        cardDetector.drawOverlay(ctx, detection);
+                        
+                        // Update debug info
+                        if (detection) {
+                            if (cardDetector.isStable()) {
+                                addDebug(
+                                    `✓ Card LOCKED | ${fps} FPS | ${cardDetector.getProcessTime().toFixed(1)}ms`, 
+                                    'success'
+                                );
+                            } else {
+                                addDebug(
+                                    `⚠ Card detected, stabilizing... | ${fps} FPS`, 
+                                    'warning'
+                                );
+                            }
+                        } else {
+                            // Only update periodically to avoid spam
+                            if (frameCount % 30 === 0) {
+                                addDebug(
+                                    `Scanning for card... | ${fps} FPS | ${cardDetector.getProcessTime().toFixed(1)}ms`,
+                                    'info'
+                                );
+                            }
+                        }
+
+                    } catch (error) {
+                        addDebug(`Error: ${error.message}`, 'error');
+                        console.error('Frame processing error:', error);
+                    }
+                };
+
+                // Use requestAnimationFrame for smooth loop
+                const animate = () => {
+                    processFrame();
+                    requestAnimationFrame(animate);
+                };
+                
+                addDebug('Starting detection loop...', 'success');
+                animate();
 
             } catch (error) {
-                alert(`Error: ${error.message}`);
-                startDetection();
-                captureBtn.disabled = false;
+                console.error('Initialization error:', error);
+                addDebug(`FATAL ERROR: ${error.message}`, 'error');
+                
+                // Show helpful error message
+                if (error.name === 'NotAllowedError' || error.message.includes('permission')) {
+                    addDebug('Camera access denied. Please allow camera access in browser settings.', 'error');
+                } else if (!window.isSecureContext) {
+                    addDebug('Requires HTTPS. Make sure you\'re using https:// URL.', 'error');
+                } else {
+                    addDebug('Check console for details. Try refreshing the page.', 'error');
+                }
             }
-        });
-
-        // === Show Results ===
-        function showResults() {
-            // Stop camera
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-
-            // Build results HTML
-            const fingers = ['thumb', 'index', 'middle', 'ring', 'pinky'];
-            const resultsHTML = fingers.map(finger => {
-                const data = measurements[finger];
-                if (!data) return '';
-
-                return `
-                    <div class="finger-card">
-                        <div class="finger-name">${finger.charAt(0).toUpperCase() + finger.slice(1)}</div>
-                        <div class="measurement-grid">
-                            <div class="measurement-item">
-                                <div class="measurement-label">Chord Length</div>
-                                <div class="measurement-value">${data.chordMm} mm</div>
-                            </div>
-                            <div class="measurement-item">
-                                <div class="measurement-label">With Curvature (×1.06)</div>
-                                <div class="measurement-value">${data.curvedMm} mm</div>
-                            </div>
-                            <div class="measurement-item">
-                                <div class="measurement-label">Tomica Size</div>
-                                <div class="size-value">Size ${data.sizeNumber}</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            resultsContainer.innerHTML = resultsHTML;
-            cameraScreen.style.display = 'none';
-            resultsScreen.style.display = 'block';
         }
 
-        // === Restart ===
-        restartBtn.addEventListener('click', () => {
-            location.reload();
-        });
-
-        // === Start App ===
-        init();
+        // Start app when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
     </script>
 </body>
 </html>

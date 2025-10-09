@@ -1,0 +1,475 @@
+/**
+ * CardDetector - Simple credit card detection with green overlay
+ * Uses edge detection + contour finding + aspect ratio filtering
+ */
+
+class CardDetector {
+    constructor() {
+        // Credit card standard dimensions (ISO/IEC 7810 ID-1)
+        this.CARD_ASPECT_RATIO = 1.586; // 85.6mm / 53.98mm
+        this.ASPECT_TOLERANCE = 0.25; // 25% tolerance
+        
+        // Detection state
+        this.lastDetection = null;
+        this.detectionHistory = [];
+        this.stableFrames = 0;
+        
+        // Performance tracking
+        this.lastProcessTime = 0;
+    }
+
+    /**
+     * Detect credit card in image
+     * @param {ImageData} imageData - Raw image data from canvas
+     * @returns {Object|null} Detection result with 4 corners, or null
+     */
+    detectCard(imageData) {
+        const startTime = performance.now();
+        
+        try {
+            // 1. Convert to grayscale
+            const gray = this._toGrayscale(imageData);
+            
+            // 2. Apply edge detection (Sobel + thresholding)
+            const edges = this._detectEdges(gray, imageData.width, imageData.height);
+            
+            // 3. Find contours
+            const contours = this._findContours(edges, imageData.width, imageData.height);
+            
+            // 4. Find rectangles matching card aspect ratio
+            const rectangles = this._findCardRectangles(contours, imageData.width, imageData.height);
+            
+            // 5. Pick best candidate
+            const detection = this._selectBestCandidate(rectangles, imageData);
+            
+            // Update stability tracking
+            if (detection) {
+                this._updateHistory(detection);
+                this.lastDetection = detection;
+            } else {
+                this.detectionHistory = [];
+                this.stableFrames = 0;
+            }
+            
+            this.lastProcessTime = performance.now() - startTime;
+            return detection;
+            
+        } catch (error) {
+            console.error('Card detection error:', error);
+            this.lastProcessTime = performance.now() - startTime;
+            return null;
+        }
+    }
+
+    /**
+     * Draw green overlay on detected card
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {Object} detection - Detection result with corners
+     */
+    drawOverlay(ctx, detection) {
+        if (!detection || !detection.corners) return;
+        
+        const corners = detection.corners;
+        
+        // Draw semi-transparent green fill
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        ctx.lineTo(corners[1].x, corners[1].y);
+        ctx.lineTo(corners[2].x, corners[2].y);
+        ctx.lineTo(corners[3].x, corners[3].y);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+        ctx.fill();
+        
+        // Draw bright green outline
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        ctx.lineTo(corners[1].x, corners[1].y);
+        ctx.lineTo(corners[2].x, corners[2].y);
+        ctx.lineTo(corners[3].x, corners[3].y);
+        ctx.closePath();
+        ctx.strokeStyle = 'rgb(0, 255, 0)';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+    }
+
+    /**
+     * Check if detection is stable
+     * @returns {boolean} True if stable for 3+ frames
+     */
+    isStable() {
+        return this.stableFrames >= 3;
+    }
+
+    /**
+     * Get last processing time
+     * @returns {number} Processing time in ms
+     */
+    getProcessTime() {
+        return this.lastProcessTime;
+    }
+
+    // ==================== PRIVATE METHODS ====================
+
+    /**
+     * Convert RGB image to grayscale
+     * @private
+     */
+    _toGrayscale(imageData) {
+        const data = imageData.data;
+        const gray = new Uint8Array(imageData.width * imageData.height);
+        
+        for (let i = 0; i < data.length; i += 4) {
+            // Luminosity method
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            gray[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        }
+        
+        return gray;
+    }
+
+    /**
+     * Detect edges using Sobel operator
+     * @private
+     */
+    _detectEdges(gray, width, height) {
+        const edges = new Uint8Array(width * height);
+        
+        // Sobel kernels
+        const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+        const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+        
+        // Apply Sobel operator
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                let gx = 0, gy = 0;
+                
+                // Convolve with kernels
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const pixel = gray[(y + ky) * width + (x + kx)];
+                        const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                        gx += pixel * sobelX[kernelIdx];
+                        gy += pixel * sobelY[kernelIdx];
+                    }
+                }
+                
+                // Gradient magnitude
+                const magnitude = Math.sqrt(gx * gx + gy * gy);
+                
+                // Threshold to get binary edge map
+                edges[y * width + x] = magnitude > 50 ? 255 : 0;
+            }
+        }
+        
+        return edges;
+    }
+
+    /**
+     * Find contours in edge image
+     * @private
+     */
+    _findContours(edges, width, height) {
+        const visited = new Uint8Array(width * height);
+        const contours = [];
+        
+        // Scan for edge pixels
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                const idx = y * width + x;
+                
+                if (edges[idx] === 255 && !visited[idx]) {
+                    // Start a new contour
+                    const contour = this._traceContour(edges, visited, x, y, width, height);
+                    
+                    // Only keep contours with enough points
+                    if (contour.length > 50) {
+                        contours.push(contour);
+                    }
+                }
+            }
+        }
+        
+        return contours;
+    }
+
+    /**
+     * Trace a contour starting from a point
+     * @private
+     */
+    _traceContour(edges, visited, startX, startY, width, height) {
+        const contour = [];
+        const stack = [{ x: startX, y: startY }];
+        
+        while (stack.length > 0 && contour.length < 1000) {
+            const { x, y } = stack.pop();
+            const idx = y * width + x;
+            
+            if (x < 0 || x >= width || y < 0 || y >= height) continue;
+            if (visited[idx] || edges[idx] !== 255) continue;
+            
+            visited[idx] = 1;
+            contour.push({ x, y });
+            
+            // Check 8-connected neighbors
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    stack.push({ x: x + dx, y: y + dy });
+                }
+            }
+        }
+        
+        return contour;
+    }
+
+    /**
+     * Find rectangles matching card aspect ratio
+     * @private
+     */
+    _findCardRectangles(contours, width, height) {
+        const rectangles = [];
+        
+        for (const contour of contours) {
+            // Approximate contour to polygon
+            const polygon = this._approximatePolygon(contour);
+            
+            // Must have exactly 4 corners
+            if (polygon.length !== 4) continue;
+            
+            // Check aspect ratio
+            const dims = this._getRectDimensions(polygon);
+            const aspectRatio = dims.width / dims.height;
+            const aspectError = Math.abs(aspectRatio - this.CARD_ASPECT_RATIO) / this.CARD_ASPECT_RATIO;
+            
+            if (aspectError > this.ASPECT_TOLERANCE) continue;
+            
+            // Check size (must be reasonable portion of image)
+            const sizeRatio = dims.width / width;
+            if (sizeRatio < 0.15 || sizeRatio > 0.95) continue;
+            
+            rectangles.push({
+                corners: polygon,
+                width: dims.width,
+                height: dims.height,
+                aspectRatio: aspectRatio,
+                aspectError: aspectError
+            });
+        }
+        
+        return rectangles;
+    }
+
+    /**
+     * Approximate contour to polygon using Douglas-Peucker
+     * @private
+     */
+    _approximatePolygon(contour) {
+        if (contour.length < 4) return contour;
+        
+        const epsilon = 0.02 * this._perimeter(contour);
+        return this._douglasPeucker(contour, epsilon);
+    }
+
+    /**
+     * Douglas-Peucker algorithm for polygon simplification
+     * @private
+     */
+    _douglasPeucker(points, epsilon) {
+        if (points.length < 3) return points;
+        
+        // Find point with max distance from line
+        let maxDist = 0;
+        let maxIdx = 0;
+        const end = points.length - 1;
+        
+        for (let i = 1; i < end; i++) {
+            const dist = this._pointToLineDistance(points[i], points[0], points[end]);
+            if (dist > maxDist) {
+                maxDist = dist;
+                maxIdx = i;
+            }
+        }
+        
+        // If max distance > epsilon, recursively simplify
+        if (maxDist > epsilon) {
+            const left = this._douglasPeucker(points.slice(0, maxIdx + 1), epsilon);
+            const right = this._douglasPeucker(points.slice(maxIdx), epsilon);
+            return [...left.slice(0, -1), ...right];
+        } else {
+            return [points[0], points[end]];
+        }
+    }
+
+    /**
+     * Calculate perimeter of contour
+     * @private
+     */
+    _perimeter(contour) {
+        let perimeter = 0;
+        for (let i = 0; i < contour.length; i++) {
+            const p1 = contour[i];
+            const p2 = contour[(i + 1) % contour.length];
+            perimeter += Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        }
+        return perimeter;
+    }
+
+    /**
+     * Distance from point to line
+     * @private
+     */
+    _pointToLineDistance(point, lineStart, lineEnd) {
+        const dx = lineEnd.x - lineStart.x;
+        const dy = lineEnd.y - lineStart.y;
+        const lenSq = dx * dx + dy * dy;
+        
+        if (lenSq === 0) {
+            return Math.sqrt(Math.pow(point.x - lineStart.x, 2) + Math.pow(point.y - lineStart.y, 2));
+        }
+        
+        const t = Math.max(0, Math.min(1, ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lenSq));
+        const projX = lineStart.x + t * dx;
+        const projY = lineStart.y + t * dy;
+        
+        return Math.sqrt(Math.pow(point.x - projX, 2) + Math.pow(point.y - projY, 2));
+    }
+
+    /**
+     * Get rectangle dimensions
+     * @private
+     */
+    _getRectDimensions(corners) {
+        const width1 = Math.sqrt(Math.pow(corners[1].x - corners[0].x, 2) + Math.pow(corners[1].y - corners[0].y, 2));
+        const width2 = Math.sqrt(Math.pow(corners[3].x - corners[2].x, 2) + Math.pow(corners[3].y - corners[2].y, 2));
+        const height1 = Math.sqrt(Math.pow(corners[2].x - corners[1].x, 2) + Math.pow(corners[2].y - corners[1].y, 2));
+        const height2 = Math.sqrt(Math.pow(corners[0].x - corners[3].x, 2) + Math.pow(corners[0].y - corners[3].y, 2));
+        
+        return {
+            width: (width1 + width2) / 2,
+            height: (height1 + height2) / 2
+        };
+    }
+
+    /**
+     * Select best candidate from rectangles
+     * @private
+     */
+    _selectBestCandidate(rectangles, imageData) {
+        if (rectangles.length === 0) return null;
+        
+        // Score each rectangle
+        let bestScore = 0;
+        let bestRect = null;
+        
+        for (const rect of rectangles) {
+            // Score based on: aspect ratio accuracy, size, brightness uniformity
+            const aspectScore = 1 - rect.aspectError;
+            const sizeScore = Math.min(rect.width / imageData.width, 0.8);
+            const brightnessScore = this._checkBrightness(rect.corners, imageData);
+            
+            const score = aspectScore * 0.5 + sizeScore * 0.3 + brightnessScore * 0.2;
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestRect = rect;
+            }
+        }
+        
+        return bestRect;
+    }
+
+    /**
+     * Check brightness uniformity inside rectangle
+     * @private
+     */
+    _checkBrightness(corners, imageData) {
+        // Sample 20 random points inside rectangle
+        const samples = 20;
+        let sum = 0;
+        
+        for (let i = 0; i < samples; i++) {
+            const t = Math.random();
+            const s = Math.random();
+            
+            // Bilinear interpolation to get point inside quad
+            const x = Math.floor(
+                (1 - t) * (1 - s) * corners[0].x +
+                t * (1 - s) * corners[1].x +
+                t * s * corners[2].x +
+                (1 - t) * s * corners[3].x
+            );
+            const y = Math.floor(
+                (1 - t) * (1 - s) * corners[0].y +
+                t * (1 - s) * corners[1].y +
+                t * s * corners[2].y +
+                (1 - t) * s * corners[3].y
+            );
+            
+            if (x >= 0 && x < imageData.width && y >= 0 && y < imageData.height) {
+                const idx = (y * imageData.width + x) * 4;
+                const brightness = (imageData.data[idx] + imageData.data[idx + 1] + imageData.data[idx + 2]) / 3;
+                sum += brightness;
+            }
+        }
+        
+        const avgBrightness = sum / samples;
+        
+        // Cards are usually bright
+        return Math.min(avgBrightness / 255, 1.0);
+    }
+
+    /**
+     * Update detection history for stability
+     * @private
+     */
+    _updateHistory(detection) {
+        this.detectionHistory.push(detection);
+        
+        if (this.detectionHistory.length > 5) {
+            this.detectionHistory.shift();
+        }
+        
+        // Check if recent detections are consistent
+        if (this.detectionHistory.length >= 3) {
+            const isConsistent = this._checkConsistency();
+            if (isConsistent) {
+                this.stableFrames++;
+            } else {
+                this.stableFrames = 0;
+            }
+        }
+    }
+
+    /**
+     * Check if recent detections are consistent
+     * @private
+     */
+    _checkConsistency() {
+        if (this.detectionHistory.length < 3) return false;
+        
+        const recent = this.detectionHistory.slice(-3);
+        
+        // Check if corner positions are similar
+        for (let i = 0; i < 4; i++) {
+            const x0 = recent[0].corners[i].x;
+            const y0 = recent[0].corners[i].y;
+            
+            for (let j = 1; j < recent.length; j++) {
+                const x = recent[j].corners[i].x;
+                const y = recent[j].corners[i].y;
+                const dist = Math.sqrt(Math.pow(x - x0, 2) + Math.pow(y - y0, 2));
+                
+                // If corners moved > 30px, not consistent
+                if (dist > 30) return false;
+            }
+        }
+        
+        return true;
+    }
+}
+
+// Export for use in HTML
+window.CardDetector = CardDetector;
