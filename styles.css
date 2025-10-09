@@ -74,6 +74,41 @@ body {
     color: #ff0;
 }
 
+/* Guide rectangle - helps user position card */
+#guide-rectangle {
+    position: fixed;
+    top: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 70%;
+    max-width: 500px;
+    aspect-ratio: 1.586; /* Credit card aspect ratio */
+    border: 3px dashed rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 999;
+    transition: all 0.3s ease;
+}
+
+#guide-rectangle.locked {
+    border-color: rgb(0, 255, 0);
+    border-style: solid;
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+}
+
+#guide-text {
+    position: absolute;
+    top: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 5px 15px;
+    border-radius: 5px;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
 /* Loading indicator */
 .loading {
     color: #fff;

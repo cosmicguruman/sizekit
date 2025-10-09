@@ -7,7 +7,11 @@ class CardDetector {
     constructor() {
         // Credit card standard dimensions (ISO/IEC 7810 ID-1)
         this.CARD_ASPECT_RATIO = 1.586; // 85.6mm / 53.98mm
-        this.ASPECT_TOLERANCE = 0.25; // 25% tolerance
+        this.ASPECT_TOLERANCE = 0.15; // 15% tolerance (TIGHTER)
+        
+        // Size matching - card should fill guide reasonably
+        this.MIN_GUIDE_FILL = 0.65; // Card should be at least 65% of guide
+        this.MAX_GUIDE_FILL = 1.05; // Card shouldn't exceed guide by much
         
         // Detection state
         this.lastDetection = null;
@@ -21,9 +25,10 @@ class CardDetector {
     /**
      * Detect credit card in image
      * @param {ImageData} imageData - Raw image data from canvas
+     * @param {Object} guideRegion - Guide rectangle bounds {x, y, width, height}
      * @returns {Object|null} Detection result with 4 corners, or null
      */
-    detectCard(imageData) {
+    detectCard(imageData, guideRegion = null) {
         const startTime = performance.now();
         
         try {
@@ -33,14 +38,14 @@ class CardDetector {
             // 2. Apply edge detection (Sobel + thresholding)
             const edges = this._detectEdges(gray, imageData.width, imageData.height);
             
-            // 3. Find contours
-            const contours = this._findContours(edges, imageData.width, imageData.height);
+            // 3. Find contours (only in guide region if provided)
+            const contours = this._findContours(edges, imageData.width, imageData.height, guideRegion);
             
             // 4. Find rectangles matching card aspect ratio
-            const rectangles = this._findCardRectangles(contours, imageData.width, imageData.height);
+            const rectangles = this._findCardRectangles(contours, imageData.width, imageData.height, guideRegion);
             
             // 5. Pick best candidate
-            const detection = this._selectBestCandidate(rectangles, imageData);
+            const detection = this._selectBestCandidate(rectangles, imageData, guideRegion);
             
             // Update stability tracking
             if (detection) {
@@ -95,10 +100,10 @@ class CardDetector {
 
     /**
      * Check if detection is stable
-     * @returns {boolean} True if stable for 3+ frames
+     * @returns {boolean} True if stable for 5+ frames
      */
     isStable() {
-        return this.stableFrames >= 3;
+        return this.stableFrames >= 5;
     }
 
     /**
@@ -159,8 +164,8 @@ class CardDetector {
                 // Gradient magnitude
                 const magnitude = Math.sqrt(gx * gx + gy * gy);
                 
-                // Threshold to get binary edge map
-                edges[y * width + x] = magnitude > 50 ? 255 : 0;
+                // Threshold to get binary edge map (STRONGER: 80 instead of 50)
+                edges[y * width + x] = magnitude > 80 ? 255 : 0;
             }
         }
         
@@ -171,13 +176,19 @@ class CardDetector {
      * Find contours in edge image
      * @private
      */
-    _findContours(edges, width, height) {
+    _findContours(edges, width, height, guideRegion = null) {
         const visited = new Uint8Array(width * height);
         const contours = [];
         
-        // Scan for edge pixels
-        for (let y = 1; y < height - 1; y++) {
-            for (let x = 1; x < width - 1; x++) {
+        // Define search bounds (use guide region if provided)
+        const minX = guideRegion ? Math.max(1, Math.floor(guideRegion.x)) : 1;
+        const minY = guideRegion ? Math.max(1, Math.floor(guideRegion.y)) : 1;
+        const maxX = guideRegion ? Math.min(width - 1, Math.floor(guideRegion.x + guideRegion.width)) : width - 1;
+        const maxY = guideRegion ? Math.min(height - 1, Math.floor(guideRegion.y + guideRegion.height)) : height - 1;
+        
+        // Scan for edge pixels (only in search region)
+        for (let y = minY; y < maxY; y++) {
+            for (let x = minX; x < maxX; x++) {
                 const idx = y * width + x;
                 
                 if (edges[idx] === 255 && !visited[idx]) {
@@ -229,7 +240,7 @@ class CardDetector {
      * Find rectangles matching card aspect ratio
      * @private
      */
-    _findCardRectangles(contours, width, height) {
+    _findCardRectangles(contours, width, height, guideRegion = null) {
         const rectangles = [];
         
         for (const contour of contours) {
@@ -246,16 +257,23 @@ class CardDetector {
             
             if (aspectError > this.ASPECT_TOLERANCE) continue;
             
-            // Check size (must be reasonable portion of image)
-            const sizeRatio = dims.width / width;
-            if (sizeRatio < 0.15 || sizeRatio > 0.95) continue;
+            // If guide region provided, check if card matches guide size
+            if (guideRegion) {
+                const guideFill = dims.width / guideRegion.width;
+                if (guideFill < this.MIN_GUIDE_FILL || guideFill > this.MAX_GUIDE_FILL) continue;
+            } else {
+                // Fallback: check size relative to image
+                const sizeRatio = dims.width / width;
+                if (sizeRatio < 0.20 || sizeRatio > 0.60) continue;
+            }
             
             rectangles.push({
                 corners: polygon,
                 width: dims.width,
                 height: dims.height,
                 aspectRatio: aspectRatio,
-                aspectError: aspectError
+                aspectError: aspectError,
+                guideFill: guideRegion ? dims.width / guideRegion.width : null
             });
         }
         
@@ -357,7 +375,7 @@ class CardDetector {
      * Select best candidate from rectangles
      * @private
      */
-    _selectBestCandidate(rectangles, imageData) {
+    _selectBestCandidate(rectangles, imageData, guideRegion = null) {
         if (rectangles.length === 0) return null;
         
         // Score each rectangle
@@ -365,12 +383,22 @@ class CardDetector {
         let bestRect = null;
         
         for (const rect of rectangles) {
-            // Score based on: aspect ratio accuracy, size, brightness uniformity
+            // Score based on: aspect ratio accuracy, guide fill match, brightness uniformity
             const aspectScore = 1 - rect.aspectError;
-            const sizeScore = Math.min(rect.width / imageData.width, 0.8);
             const brightnessScore = this._checkBrightness(rect.corners, imageData);
             
-            const score = aspectScore * 0.5 + sizeScore * 0.3 + brightnessScore * 0.2;
+            // If guide provided, prefer rectangles that fill it well
+            let sizeScore;
+            if (guideRegion && rect.guideFill) {
+                // Prefer 80-90% fill
+                const targetFill = 0.85;
+                const fillError = Math.abs(rect.guideFill - targetFill);
+                sizeScore = Math.max(0, 1 - fillError * 2);
+            } else {
+                sizeScore = Math.min(rect.width / imageData.width, 0.8);
+            }
+            
+            const score = aspectScore * 0.4 + sizeScore * 0.4 + brightnessScore * 0.2;
             
             if (score > bestScore) {
                 bestScore = score;
@@ -462,8 +490,8 @@ class CardDetector {
                 const y = recent[j].corners[i].y;
                 const dist = Math.sqrt(Math.pow(x - x0, 2) + Math.pow(y - y0, 2));
                 
-                // If corners moved > 30px, not consistent
-                if (dist > 30) return false;
+                // If corners moved > 20px, not consistent (TIGHTER)
+                if (dist > 20) return false;
             }
         }
         

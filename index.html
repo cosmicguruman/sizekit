@@ -13,6 +13,11 @@
         <canvas id="overlay-canvas"></canvas>
     </div>
 
+    <!-- Guide Rectangle -->
+    <div id="guide-rectangle">
+        <div id="guide-text">Position card here</div>
+    </div>
+
     <!-- Debug Console (bottom) -->
     <div id="debug-console">
         <div class="debug-line">Initializing...</div>
@@ -61,6 +66,7 @@
                 
                 const video = document.getElementById('video');
                 const canvas = document.getElementById('overlay-canvas');
+                const guideEl = document.getElementById('guide-rectangle');
                 const ctx = canvas.getContext('2d', {
                     willReadFrequently: true
                 });
@@ -68,6 +74,23 @@
                 // Initialize camera
                 await camera.initialize(video, canvas);
                 addDebug('✓ Camera initialized', 'success');
+
+                // Get guide rectangle bounds (in canvas coordinates)
+                function getGuideRegion() {
+                    const guideRect = guideEl.getBoundingClientRect();
+                    const canvasRect = canvas.getBoundingClientRect();
+                    
+                    // Convert from screen coordinates to canvas coordinates
+                    const scaleX = canvas.width / canvasRect.width;
+                    const scaleY = canvas.height / canvasRect.height;
+                    
+                    return {
+                        x: (guideRect.left - canvasRect.left) * scaleX,
+                        y: (guideRect.top - canvasRect.top) * scaleY,
+                        width: guideRect.width * scaleX,
+                        height: guideRect.height * scaleY
+                    };
+                }
 
                 // Detection loop
                 let frameCount = 0;
@@ -93,11 +116,21 @@
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                         
-                        // Detect card
-                        const detection = cardDetector.detectCard(imageData);
+                        // Get guide region
+                        const guideRegion = getGuideRegion();
+                        
+                        // Detect card (only within guide region)
+                        const detection = cardDetector.detectCard(imageData, guideRegion);
                         
                         // Draw overlay
                         cardDetector.drawOverlay(ctx, detection);
+                        
+                        // Update guide visual
+                        if (detection && cardDetector.isStable()) {
+                            guideEl.classList.add('locked');
+                        } else {
+                            guideEl.classList.remove('locked');
+                        }
                         
                         // Update debug info
                         if (detection) {
@@ -116,7 +149,7 @@
                             // Only update periodically to avoid spam
                             if (frameCount % 30 === 0) {
                                 addDebug(
-                                    `Scanning for card... | ${fps} FPS | ${cardDetector.getProcessTime().toFixed(1)}ms`,
+                                    `Scanning for card in guide... | ${fps} FPS | ${cardDetector.getProcessTime().toFixed(1)}ms`,
                                     'info'
                                 );
                             }
