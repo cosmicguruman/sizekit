@@ -33,12 +33,24 @@
         <div class="debug-line">Initializing...</div>
     </div>
 
+    <!-- Load OpenCV.js from CDN -->
+    <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    
     <!-- Load modules -->
     <script src="modules/camera.js"></script>
     <script src="modules/cardDetector.js"></script>
 
     <!-- Main app logic -->
     <script>
+        // Wait for OpenCV to load
+        let openCvReady = false;
+        
+        function onOpenCvReady() {
+            openCvReady = true;
+            addDebug('✓ OpenCV.js loaded', 'success');
+            console.log('OpenCV.js version:', cv.getBuildInformation());
+        }
+
         // Credit card standard dimensions (ISO/IEC 7810 ID-1)
         const CARD_WIDTH_MM = 85.6;
         const CARD_HEIGHT_MM = 53.98;
@@ -344,6 +356,12 @@
          */
         async function init() {
             try {
+                // Wait for OpenCV to load
+                addDebug('Loading OpenCV.js...', 'info');
+                while (!openCvReady) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
                 addDebug('Starting camera...', 'info');
                 
                 const camera = new Camera();
