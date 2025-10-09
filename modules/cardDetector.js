@@ -7,11 +7,11 @@ class CardDetector {
     constructor() {
         // Credit card standard dimensions (ISO/IEC 7810 ID-1)
         this.CARD_ASPECT_RATIO = 1.586; // 85.6mm / 53.98mm
-        this.ASPECT_TOLERANCE = 0.15; // 15% tolerance (TIGHTER)
+        this.ASPECT_TOLERANCE = 0.30; // 30% tolerance (RELAXED for easier detection)
         
         // Size matching - card should fill guide reasonably
-        this.MIN_GUIDE_FILL = 0.65; // Card should be at least 65% of guide
-        this.MAX_GUIDE_FILL = 1.05; // Card shouldn't exceed guide by much
+        this.MIN_GUIDE_FILL = 0.50; // Card should be at least 50% of guide (RELAXED)
+        this.MAX_GUIDE_FILL = 1.15; // Card can exceed guide a bit (RELAXED)
         
         // Detection state
         this.lastDetection = null;
@@ -20,6 +20,17 @@ class CardDetector {
         
         // Performance tracking
         this.lastProcessTime = 0;
+        
+        // Debug mode
+        this.debugMode = false;
+        this.debugData = null;
+    }
+
+    /**
+     * Enable/disable debug visualization
+     */
+    setDebugMode(enabled) {
+        this.debugMode = enabled;
     }
 
     /**
@@ -47,6 +58,26 @@ class CardDetector {
             // 5. Pick best candidate
             const detection = this._selectBestCandidate(rectangles, imageData, guideRegion);
             
+            // Store debug data
+            if (this.debugMode) {
+                this.debugData = {
+                    edges: edges,
+                    contours: contours,
+                    rectangles: rectangles,
+                    guideRegion: guideRegion,
+                    imageWidth: imageData.width,
+                    imageHeight: imageData.height
+                };
+            }
+            
+            // Log detection info
+            if (this.debugMode) {
+                console.log(`🔍 Detection: ${contours.length} contours, ${rectangles.length} rectangles`);
+                if (rectangles.length > 0 && !detection) {
+                    console.log(`⚠️ Rectangles found but none selected`);
+                }
+            }
+            
             // Update stability tracking
             if (detection) {
                 this._updateHistory(detection);
@@ -72,6 +103,11 @@ class CardDetector {
      * @param {Object} detection - Detection result with corners
      */
     drawOverlay(ctx, detection) {
+        // Draw debug visualization if enabled
+        if (this.debugMode && this.debugData) {
+            this._drawDebugOverlay(ctx);
+        }
+        
         if (!detection || !detection.corners) return;
         
         const corners = detection.corners;
@@ -99,11 +135,51 @@ class CardDetector {
     }
 
     /**
+     * Draw debug visualization
+     * @private
+     */
+    _drawDebugOverlay(ctx) {
+        const data = this.debugData;
+        if (!data) return;
+        
+        // Draw all detected contours in red
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.lineWidth = 1;
+        for (const contour of data.contours) {
+            if (contour.length < 2) continue;
+            ctx.beginPath();
+            ctx.moveTo(contour[0].x, contour[0].y);
+            for (let i = 1; i < contour.length; i++) {
+                ctx.lineTo(contour[i].x, contour[i].y);
+            }
+            ctx.stroke();
+        }
+        
+        // Draw all rectangle candidates in yellow
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.7)';
+        ctx.lineWidth = 2;
+        for (const rect of data.rectangles) {
+            ctx.beginPath();
+            ctx.moveTo(rect.corners[0].x, rect.corners[0].y);
+            for (let i = 1; i < rect.corners.length; i++) {
+                ctx.lineTo(rect.corners[i].x, rect.corners[i].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Draw aspect ratio text
+            ctx.fillStyle = 'yellow';
+            ctx.font = '12px monospace';
+            ctx.fillText(`AR: ${rect.aspectRatio.toFixed(2)}`, rect.corners[0].x, rect.corners[0].y - 5);
+        }
+    }
+
+    /**
      * Check if detection is stable
-     * @returns {boolean} True if stable for 5+ frames
+     * @returns {boolean} True if stable for 2+ frames (FAST locking)
      */
     isStable() {
-        return this.stableFrames >= 5;
+        return this.stableFrames >= 2;
     }
 
     /**
@@ -164,8 +240,8 @@ class CardDetector {
                 // Gradient magnitude
                 const magnitude = Math.sqrt(gx * gx + gy * gy);
                 
-                // Threshold to get binary edge map (STRONGER: 80 instead of 50)
-                edges[y * width + x] = magnitude > 80 ? 255 : 0;
+                // Threshold to get binary edge map (RELAXED: 40 for easier detection)
+                edges[y * width + x] = magnitude > 40 ? 255 : 0;
             }
         }
         
@@ -242,29 +318,53 @@ class CardDetector {
      */
     _findCardRectangles(contours, width, height, guideRegion = null) {
         const rectangles = [];
+        let rejectedCount = { corners: 0, aspectRatio: 0, size: 0 };
         
         for (const contour of contours) {
             // Approximate contour to polygon
             const polygon = this._approximatePolygon(contour);
             
             // Must have exactly 4 corners
-            if (polygon.length !== 4) continue;
+            if (polygon.length !== 4) {
+                rejectedCount.corners++;
+                continue;
+            }
             
             // Check aspect ratio
             const dims = this._getRectDimensions(polygon);
             const aspectRatio = dims.width / dims.height;
             const aspectError = Math.abs(aspectRatio - this.CARD_ASPECT_RATIO) / this.CARD_ASPECT_RATIO;
             
-            if (aspectError > this.ASPECT_TOLERANCE) continue;
+            if (aspectError > this.ASPECT_TOLERANCE) {
+                rejectedCount.aspectRatio++;
+                if (this.debugMode) {
+                    console.log(`  ❌ Rejected AR: ${aspectRatio.toFixed(2)} (error: ${(aspectError*100).toFixed(0)}%)`);
+                }
+                continue;
+            }
             
             // If guide region provided, check if card matches guide size
+            let guideFill = null;
             if (guideRegion) {
-                const guideFill = dims.width / guideRegion.width;
-                if (guideFill < this.MIN_GUIDE_FILL || guideFill > this.MAX_GUIDE_FILL) continue;
+                guideFill = dims.width / guideRegion.width;
+                if (guideFill < this.MIN_GUIDE_FILL || guideFill > this.MAX_GUIDE_FILL) {
+                    rejectedCount.size++;
+                    if (this.debugMode) {
+                        console.log(`  ❌ Rejected size: ${(guideFill*100).toFixed(0)}% fill (want ${this.MIN_GUIDE_FILL*100}-${this.MAX_GUIDE_FILL*100}%)`);
+                    }
+                    continue;
+                }
             } else {
                 // Fallback: check size relative to image
                 const sizeRatio = dims.width / width;
-                if (sizeRatio < 0.20 || sizeRatio > 0.60) continue;
+                if (sizeRatio < 0.20 || sizeRatio > 0.60) {
+                    rejectedCount.size++;
+                    continue;
+                }
+            }
+            
+            if (this.debugMode) {
+                console.log(`  ✅ Rectangle: AR=${aspectRatio.toFixed(2)}, fill=${guideFill ? (guideFill*100).toFixed(0)+'%' : 'N/A'}`);
             }
             
             rectangles.push({
@@ -273,8 +373,12 @@ class CardDetector {
                 height: dims.height,
                 aspectRatio: aspectRatio,
                 aspectError: aspectError,
-                guideFill: guideRegion ? dims.width / guideRegion.width : null
+                guideFill: guideFill
             });
+        }
+        
+        if (this.debugMode && rectangles.length === 0) {
+            console.log(`📊 Rejections: ${rejectedCount.corners} corners, ${rejectedCount.aspectRatio} aspect ratio, ${rejectedCount.size} size`);
         }
         
         return rectangles;

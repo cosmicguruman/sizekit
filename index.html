@@ -23,6 +23,11 @@
         <div class="debug-line">Initializing...</div>
     </div>
 
+    <!-- Debug Toggle (top right) -->
+    <button id="debug-toggle" style="position: fixed; top: 10px; right: 10px; z-index: 1001; background: rgba(0,0,0,0.7); color: #0f0; border: 1px solid #0f0; padding: 8px 12px; border-radius: 5px; font-size: 12px;">
+        DEBUG: OFF
+    </button>
+
     <!-- Load modules -->
     <script src="modules/camera.js"></script>
     <script src="modules/cardDetector.js"></script>
@@ -31,6 +36,7 @@
     <script>
         let debugLines = [];
         const maxDebugLines = 8;
+        let debugMode = false;
 
         /**
          * Add debug message to console
@@ -67,8 +73,18 @@
                 const video = document.getElementById('video');
                 const canvas = document.getElementById('overlay-canvas');
                 const guideEl = document.getElementById('guide-rectangle');
+                const debugToggle = document.getElementById('debug-toggle');
                 const ctx = canvas.getContext('2d', {
                     willReadFrequently: true
+                });
+
+                // Debug toggle
+                debugToggle.addEventListener('click', () => {
+                    debugMode = !debugMode;
+                    debugToggle.textContent = `DEBUG: ${debugMode ? 'ON' : 'OFF'}`;
+                    debugToggle.style.background = debugMode ? 'rgba(0,255,0,0.3)' : 'rgba(0,0,0,0.7)';
+                    cardDetector.setDebugMode(debugMode);
+                    addDebug(`Debug visualization ${debugMode ? 'enabled' : 'disabled'}`, 'info');
                 });
 
                 // Initialize camera
