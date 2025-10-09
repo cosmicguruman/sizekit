@@ -112,6 +112,7 @@
                 let frameCount = 0;
                 let lastFpsUpdate = performance.now();
                 let fps = 0;
+                let lastDetectionState = 'scanning'; // Track state to reduce debug spam
 
                 const processFrame = async () => {
                     try {
@@ -148,26 +149,25 @@
                             guideEl.classList.remove('locked');
                         }
                         
-                        // Update debug info
-                        if (detection) {
-                            if (cardDetector.isStable()) {
-                                addDebug(
-                                    `✓ Card LOCKED | ${fps} FPS | ${cardDetector.getProcessTime().toFixed(1)}ms`, 
-                                    'success'
-                                );
-                            } else {
-                                addDebug(
-                                    `⚠ Card detected, stabilizing... | ${fps} FPS`, 
-                                    'warning'
-                                );
+                        // Update debug info (only on state changes to reduce spam)
+                        const wasLocked = lastDetectionState === 'locked';
+                        const isNowLocked = detection && cardDetector.isStable();
+                        
+                        if (isNowLocked && !wasLocked) {
+                            // Just locked!
+                            addDebug(`✓ Card LOCKED | ${fps} FPS`, 'success');
+                            lastDetectionState = 'locked';
+                        } else if (detection && !isNowLocked) {
+                            // Detecting but not stable yet
+                            if (lastDetectionState !== 'detecting') {
+                                addDebug(`⚠ Card detected, stabilizing...`, 'warning');
+                                lastDetectionState = 'detecting';
                             }
-                        } else {
-                            // Only update periodically to avoid spam
-                            if (frameCount % 30 === 0) {
-                                addDebug(
-                                    `Scanning for card in guide... | ${fps} FPS | ${cardDetector.getProcessTime().toFixed(1)}ms`,
-                                    'info'
-                                );
+                        } else if (!detection) {
+                            // No detection
+                            if (frameCount % 30 === 0 && lastDetectionState !== 'scanning') {
+                                addDebug(`Scanning for card... | ${fps} FPS`, 'info');
+                                lastDetectionState = 'scanning';
                             }
                         }
 

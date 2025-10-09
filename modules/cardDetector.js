@@ -218,33 +218,31 @@ class CardDetector {
     }
 
     /**
-     * Smooth corner positions by averaging recent history
-     * Reduces jitter and makes overlay stable
+     * Smooth corner positions with exponential moving average
+     * Makes overlay VERY stable - barely moves
      * @private
      */
     _smoothCorners(currentCorners) {
-        if (this.detectionHistory.length === 0) {
+        // If no previous smoothed corners, start fresh
+        if (!this.smoothedCorners) {
             return currentCorners;
         }
         
-        // Average corner positions from last 3 detections
-        const recentDetections = this.detectionHistory.slice(-3);
+        // Exponential moving average: 85% previous, 15% current
+        // This creates VERY smooth motion - like slow-motion stabilization
+        const alpha = 0.15; // Low = smoother (but slower response)
         const smoothed = [];
         
         for (let i = 0; i < 4; i++) {
-            let sumX = currentCorners[i].x;
-            let sumY = currentCorners[i].y;
-            let count = 1;
+            const prevX = this.smoothedCorners[i].x;
+            const prevY = this.smoothedCorners[i].y;
+            const currX = currentCorners[i].x;
+            const currY = currentCorners[i].y;
             
-            for (const detection of recentDetections) {
-                sumX += detection.corners[i].x;
-                sumY += detection.corners[i].y;
-                count++;
-            }
-            
+            // Smooth: 85% old position + 15% new position
             smoothed.push({
-                x: Math.round(sumX / count),
-                y: Math.round(sumY / count)
+                x: Math.round(prevX * (1 - alpha) + currX * alpha),
+                y: Math.round(prevY * (1 - alpha) + currY * alpha)
             });
         }
         
@@ -741,25 +739,10 @@ class CardDetector {
      * @private
      */
     _checkConsistency() {
-        if (this.detectionHistory.length < 2) return false;
+        if (this.detectionHistory.length < 1) return false;
         
-        const recent = this.detectionHistory.slice(-2);
-        
-        // Check if corner positions are similar (very lenient)
-        for (let i = 0; i < 4; i++) {
-            const x0 = recent[0].corners[i].x;
-            const y0 = recent[0].corners[i].y;
-            
-            for (let j = 1; j < recent.length; j++) {
-                const x = recent[j].corners[i].x;
-                const y = recent[j].corners[i].y;
-                const dist = Math.sqrt(Math.pow(x - x0, 2) + Math.pow(y - y0, 2));
-                
-                // Very lenient: allow up to 50px movement (smoothing handles the rest)
-                if (dist > 50) return false;
-            }
-        }
-        
+        // Don't even check consistency - smoothing handles everything!
+        // Just make sure we have at least 1 detection
         return true;
     }
 }
