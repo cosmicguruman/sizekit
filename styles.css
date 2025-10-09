@@ -75,6 +75,81 @@ body {
     color: #ff0;
 }
 
+/* Guide Rectangle - credit card outline */
+#guide-rectangle {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 70%;
+    max-width: 450px;
+    aspect-ratio: 1.586; /* Credit card aspect ratio */
+    border: 3px dashed rgba(255, 255, 255, 0.6);
+    border-radius: 12px;
+    pointer-events: none;
+    z-index: 998;
+    transition: all 0.3s ease;
+}
+
+#guide-rectangle.locked {
+    border-color: rgb(0, 255, 0);
+    border-style: solid;
+    border-width: 4px;
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.6);
+}
+
+#guide-rectangle.verifying {
+    border-color: rgb(255, 255, 0);
+    border-style: solid;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1.0; }
+}
+
+/* Corner markers on guide */
+.guide-corner {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.guide-corner.top-left {
+    top: -3px;
+    left: -3px;
+    border-right: none;
+    border-bottom: none;
+    border-radius: 12px 0 0 0;
+}
+
+.guide-corner.top-right {
+    top: -3px;
+    right: -3px;
+    border-left: none;
+    border-bottom: none;
+    border-radius: 0 12px 0 0;
+}
+
+.guide-corner.bottom-left {
+    bottom: -3px;
+    left: -3px;
+    border-right: none;
+    border-top: none;
+    border-radius: 0 0 0 12px;
+}
+
+.guide-corner.bottom-right {
+    bottom: -3px;
+    right: -3px;
+    border-left: none;
+    border-top: none;
+    border-radius: 0 0 12px 0;
+}
+
 /* Instructions overlay - top of screen */
 #instructions {
     position: fixed;
@@ -88,7 +163,7 @@ body {
 
 #instruction-text {
     color: white;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.85);
     padding: 15px 25px;
     border-radius: 10px;
     font-size: 20px;
@@ -97,14 +172,27 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
+#instruction-text.success {
+    background: rgba(0, 100, 0, 0.9);
+}
+
+#instruction-text.warning {
+    background: rgba(150, 100, 0, 0.9);
+}
+
 #instruction-detail {
-    color: #0f0;
+    color: #fff;
     background: rgba(0, 0, 0, 0.7);
     padding: 10px 20px;
     border-radius: 8px;
-    font-size: 18px;
-    font-weight: bold;
+    font-size: 16px;
+    font-weight: normal;
     margin-bottom: 15px;
+}
+
+#instruction-detail.highlight {
+    color: #0f0;
+    font-weight: bold;
 }
 
 #reset-btn {
