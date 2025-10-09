@@ -61,7 +61,7 @@
         let cardDetector = null;
         let currentState = STATE.WAITING;
         let detectionAttempts = 0;
-        const MAX_DETECTION_ATTEMPTS = 30; // Try for ~1 second after tap
+        const MAX_DETECTION_ATTEMPTS = 90; // Try for ~3 seconds after tap
 
         /**
          * Add debug message to console
@@ -323,6 +323,15 @@
                         
                         // Try to detect card in that region
                         const detection = cardDetector.detectCard(imageData, searchRegion);
+                        
+                        // Log progress every 10 frames
+                        if (detectionAttempts % 10 === 0) {
+                            if (detection) {
+                                addDebug(`Detecting... (${detectionAttempts}/${MAX_DETECTION_ATTEMPTS}) - Found candidate`, 'info');
+                            } else {
+                                addDebug(`Detecting... (${detectionAttempts}/${MAX_DETECTION_ATTEMPTS}) - Scanning`, 'info');
+                            }
+                        }
                         
                         if (detection && cardDetector.isStable() && detection.corners) {
                             // Check scale is reasonable

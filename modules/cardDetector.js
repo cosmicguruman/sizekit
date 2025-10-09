@@ -7,7 +7,7 @@ class CardDetector {
     constructor() {
         // Credit card standard dimensions (ISO/IEC 7810 ID-1)
         this.CARD_ASPECT_RATIO = 1.586; // 85.6mm / 53.98mm
-        this.ASPECT_TOLERANCE = 0.25; // 25% tolerance
+        this.ASPECT_TOLERANCE = 0.35; // 35% tolerance (more lenient)
         
         // Detection state
         this.lastDetection = null;
@@ -45,9 +45,9 @@ class CardDetector {
             this.blurred = new cv.Mat();
             cv.GaussianBlur(this.gray, this.blurred, new cv.Size(5, 5), 0);
             
-            // 4. Detect edges using Canny
+            // 4. Detect edges using Canny (lower thresholds = more edges)
             this.edges = new cv.Mat();
-            cv.Canny(this.blurred, this.edges, 50, 150);
+            cv.Canny(this.blurred, this.edges, 30, 100);
             
             // 5. Find contours
             const contours = new cv.MatVector();
@@ -142,8 +142,8 @@ class CardDetector {
     _findCardRectangles(contours, imageData, guideRegion) {
         const rectangles = [];
         const minArea = guideRegion ? 
-            (guideRegion.width * guideRegion.height * 0.3) : 
-            (imageData.width * imageData.height * 0.05);
+            (guideRegion.width * guideRegion.height * 0.1) : // Much lower minimum (10%)
+            (imageData.width * imageData.height * 0.02); // Catch smaller cards
         
         for (let i = 0; i < contours.size(); i++) {
             const contour = contours.get(i);
